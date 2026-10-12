@@ -7,6 +7,11 @@ set_target_properties(PumpkinEngine PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+
+target_sources(PumpkinEngine PRIVATE ${SOURCES})
+target_include_directories(PumpkinEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+
 if(WIN32)
     add_custom_command(TARGET PumpkinEngine POST_BUILD
             COMMAND ${CMAKE_COMMAND} -E copy_if_different
