@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <bit>
 #include <chrono>
 #include <cmath>
 #include <cstring>
@@ -18,27 +19,27 @@
 
 using namespace Pumpkin;
 
-static bool ToScreen(const std::vector<Vec4>& clip, const FrameBuffer& fb, std::vector<ScreenVertex>& out) {
+static bool ToScreen(const std::vector<Vec4f>& clip, const FrameBuffer& fb, std::vector<Vec4f>& out) {
 	out.clear();
 	out.reserve(clip.size());
 	for (const auto& c : clip) {
-		if (c.w <= 0.0f) {
+		if (c[3] <= 0.0f) {
 			return false; // behind the camera, reject until real clipping exists
 		}
-		const float invW = 1.0f / c.w;
+		const float invW = 1.0f / c[3];
 
 		// NDC: x,y in [-1, 1], z in [0, 1]
-		const float ndcX = c.x * invW;
-		const float ndcY = c.y * invW;
-		const float ndcZ = c.z * invW;
+		const float ndcX = c[0] * invW;
+		const float ndcY = c[1] * invW;
+		const float ndcZ = c[2] * invW;
 
 		// viewport transform
-		out.push_back({
+		out.emplace_back(
 			(ndcX * 0.5f + 0.5f) * fb.width,
 			(0.5f - ndcY * 0.5f) * fb.height, // Y flip: NDC is up, pixels are down
 			ndcZ,
 			invW
-		});
+		);
 	}
 	return true;
 }
@@ -49,7 +50,7 @@ static void DrawTriangle(
 	DepthBuffer& db)
 {
 	// Triangle defined in NDC coordinates
-	static const std::vector<Vec4> vertices{
+	static const std::vector<Vec4f> vertices{
 		{  0.0f,  1.0f, 0.0f, 1.0f },  // top
 		{ -1.0f, -1.0f, 0.0f, 1.0f },  // bottom left
 		{  1.0f, -1.0f, 0.0f, 1.0f }   // bottom right
@@ -60,9 +61,9 @@ static void DrawTriangle(
 		{ 0, 255, 0, 255 },  // bottom left
 		{ 255, 0, 0, 255 }   // bottom right
 	};
-	const std::vector<Vec4> clip = VertexShader(vertices);
+	const std::vector<Vec4f> clip = VertexShader(vertices);
 
-	std::vector<ScreenVertex> screen{};
+	std::vector<Vec4f> screen{};
 	if (!ToScreen(clip, fb, screen)) {
 		return;
 	}
@@ -135,7 +136,7 @@ int main() {
 		if constexpr (std::endian::native == std::endian::little) {
 			std::fill_n(fb->pixels, fb->width * fb->height, std::byteswap(0x000000FFu));
 		}
-		else if constexpr (std::endian::native == std::endian::big) {
+		else {
 			std::fill_n(fb->pixels, fb->width * fb->height, 0x000000FFu);
 		}
 		std::ranges::fill(db->pixels, 1.0f);

@@ -6,8 +6,8 @@
 
 namespace Pumpkin {
     // TODO(When 3D): Near clipping + projection + MVP
-    std::vector<Vec4> VertexShader(const std::vector<Vec4>& vertices) {
-        std::vector<Vec4> clip{};
+    std::vector<Vec4f> VertexShader(const std::vector<Vec4f>& vertices) {
+        std::vector<Vec4f> clip{};
         clip.reserve(vertices.size());
         for (const auto& v : vertices) {
             clip.push_back(v);
@@ -18,13 +18,13 @@ namespace Pumpkin {
     void PixelShader(
         const FrameBuffer& fb,
         DepthBuffer& db,
-        const std::vector<ScreenVertex>& vertices,
+        const std::vector<Vec4f>& vertices,
         const std::vector<Color>& colors
     ) {
         const unsigned hc = std::max(1u, std::thread::hardware_concurrency());
         const unsigned threadCount = hc > 2 ? hc - 2 : 1; // avoids underflow
 
-        std::vector<std::pair<uint32_t2, uint32_t2>> groups{};
+        std::vector<std::pair<Vec2u, Vec2u>> groups{};
         groups.reserve(threadCount);
 
         const uint32_t rowsPerGroup = fb.height / threadCount;

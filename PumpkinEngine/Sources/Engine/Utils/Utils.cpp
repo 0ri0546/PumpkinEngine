@@ -6,21 +6,20 @@
 
 namespace Pumpkin {
     uint32_t ToRGBA(float r, float g, float b, float a) {
-        const auto to8 = [](float v) { return static_cast<uint32_t>(std::clamp(v, 0.0f, 1.0f) * 255.0f); };
         if constexpr (std::endian::native == std::endian::little) {
-            return std::byteswap(
-                (to8(r) << 24) |
-                (to8(g) << 16) |
-                (to8(b) << 8) |
-                (to8(a))
+            return
+                (static_cast<uint32_t>(a) << 24) |
+                (static_cast<uint32_t>(r) << 16) |
+                (static_cast<uint32_t>(g) << 8) |
+                (static_cast<uint32_t>(b)
             );
         }
         else {
             return
-                (to8(r) << 24) |
-                (to8(g) << 16) |
-                (to8(b) << 8) |
-                (to8(a));
+                (static_cast<uint32_t>(r) << 24) |
+                (static_cast<uint32_t>(g) << 16) |
+                (static_cast<uint32_t>(b) << 8) |
+                (static_cast<uint32_t>(a));
         }
     }
 }

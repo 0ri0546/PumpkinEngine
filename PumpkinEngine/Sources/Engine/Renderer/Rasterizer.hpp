@@ -8,8 +8,8 @@
 
 namespace Pumpkin {
     void Rasterize(
-        const std::pair<uint32_t2, uint32_t2>& group,
-        const std::vector<ScreenVertex>& v,
+        const std::pair<Vec2u, Vec2u>& group,
+        const std::vector<Vec4f>& v,
         const std::vector<Color>& colors,
         float* depth,
         uint32_t* pixels,

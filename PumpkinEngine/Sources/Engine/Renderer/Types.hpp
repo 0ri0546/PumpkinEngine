@@ -4,6 +4,8 @@
 #include <utility>
 #include <vector>
 
+#include <Math/Vec.h>
+
 namespace Pumpkin {
     // 8-bit color depth
     struct alignas(4) Color {
@@ -22,16 +24,4 @@ namespace Pumpkin {
         std::vector<float> pixels{};
         uint16_t width{}, height{};
     };
-
-    // Output of the vertex stage
-    struct Vec4 {
-        float x{ 0 }, y{ 0 }, z{ 0 }, w{ 1 };
-    };
-
-    // Output of ToScreen
-    struct ScreenVertex {
-        float x{ 0 }, y{ 0 }, z{ 0 }, invW{ 1 };
-    };
-
-    using uint32_t2 = std::pair<uint32_t, uint32_t>;
 }
