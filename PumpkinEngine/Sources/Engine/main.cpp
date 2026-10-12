@@ -6,11 +6,12 @@
 #include <numbers>
 #include <algorithm>
 #include <bit>
+#include <string>
 
 #include <SDL3/SDL.h>
 
 // forces 8 bit colors
-struct alignas(4) Pixel {
+struct alignas(4) Color {
 	uint8_t r{ 0 };
 	uint8_t g{ 0 };
 	uint8_t b{ 0 };
@@ -18,7 +19,7 @@ struct alignas(4) Pixel {
 };
 
 struct Framebuffer {
-	std::vector<Pixel> pixels{};
+	std::vector<Color> pixels{};
 	uint16_t width{ 1920 }, height{ 1080 };
 };
 
@@ -30,7 +31,7 @@ struct DepthBuffer {
 static float GetEngineTime() {
 	using namespace std::chrono;
 	static const auto start = steady_clock::now();
-	return duration_cast<milliseconds>(steady_clock::now() - start).count();
+	return static_cast<float>(std::chrono::duration_cast<milliseconds>(steady_clock::now() - start).count());
 }
 
 using float2 = std::pair<float, float>;
@@ -38,6 +39,10 @@ using uint32_t2 = std::pair<uint32_t, uint32_t>;
 
 static float Dot(const float2& a, const float2& b) {
 	return a.first * b.first + a.second * b.second;
+}
+
+static float Distance(const float2& a, const float2& b) {
+	return static_cast<float>(std::sqrt(std::pow(b.first - a.first, 2) + std::pow(b.second - a.second, 2)));
 }
 
 static float2 Perpendicular(const float2& v) {
@@ -66,23 +71,39 @@ static uint32_t ToRGBA(float r, float g, float b, float a = 1.0f) {
 void Rasterize(
 	const std::pair<uint32_t2, uint32_t2>& group,
 	const std::vector<uint32_t2>& vertices,
+	const std::vector<Color>& colors,
 	uint32_t* pixels)
 {
+	auto edge = [](const uint32_t2& a, const uint32_t2& b, float px, float py) {
+		return (px - a.first) * ((float)b.second - a.second)
+			- (py - a.second) * ((float)b.first - a.first);
+		};
+
+	const float area = edge(vertices[0], vertices[1], (float)vertices[2].first, (float)vertices[2].second);
+
 	for (uint32_t y = group.first.second; y < group.second.second; ++y) {
 		for (uint32_t x = group.first.first; x < group.second.first; ++x) {
-			if (PointOnTriangle(vertices[0], vertices[1], vertices[2], { x, y })) {
-				pixels[y * 1920 + x] = ToRGBA(x / 1920.0f, y / 1080.0f, 0.0f);
+#pragma warning(push)
+#pragma warning(disable : 4244)
+			if (PointOnTriangle(vertices[0], vertices[1], vertices[2], {x, y})) {
+#pragma warning(pop)
+				// how much each vertex contributes at this pixel (sums to 1)
+				const float w0 = edge(vertices[1], vertices[2], (float)x, (float)y) / area;
+				const float w1 = edge(vertices[2], vertices[0], (float)x, (float)y) / area;
+				const float w2 = 1.0f - w0 - w1;
+
+				pixels[y * 1920 + x] = ToRGBA(
+					(w0 * colors[0].r + w1 * colors[1].r + w2 * colors[2].r) / 255.0f,
+					(w0 * colors[0].g + w1 * colors[1].g + w2 * colors[2].g) / 255.0f,
+					(w0 * colors[0].b + w1 * colors[1].b + w2 * colors[2].b) / 255.0f);
 			}
 		}
 	}
-	const uint32_t p = pixels[1080 / 2 * 1920 + 1920 / 2] << '\n';
-	std::cout << "AAAAA(R: " << (p & 0xFF) << " G: " << (p & 0x00FF) << " B: " << (p & 0x0000FF) << ")\n";
 }
 
-void PixelShader(const std::unique_ptr<Framebuffer>& fb, const std::vector<uint32_t2>& vertices, uint32_t* pixels) {
-	// rasterize
+void PixelShader(const std::unique_ptr<Framebuffer>& fb, const std::vector<uint32_t2>& vertices, const std::vector<Color>& colors, uint32_t* pixels) {
 	std::vector<std::jthread> threads{};
-	const size_t threadCount = std::max(1u, std::thread::hardware_concurrency()) - 2;
+	const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency()) - 2;
 
 	std::vector<std::pair<uint32_t2, uint32_t2>> groups{};
 	groups.reserve(threadCount);
@@ -104,8 +125,8 @@ void PixelShader(const std::unique_ptr<Framebuffer>& fb, const std::vector<uint3
 	}
 
 	for (const auto group : groups) {
-		threads.emplace_back([group, &vertices, &pixels]() {
-			Rasterize(group, vertices, pixels);
+		threads.emplace_back([group, &vertices, &pixels, &colors]() {
+			Rasterize(group, vertices, colors, pixels);
 		});
 	}
 	for (auto& thread : threads) {
@@ -113,7 +134,7 @@ void PixelShader(const std::unique_ptr<Framebuffer>& fb, const std::vector<uint3
 	}
 }
 
-void VertexShader(const std::unique_ptr<Framebuffer>& fb, std::vector<uint32_t2>& vertices, uint32_t* pixels) {
+void VertexShader(const std::unique_ptr<Framebuffer>& fb, std::vector<uint32_t2>& vertices, const std::vector<Color>& colors, uint32_t* pixels) {
 	static constexpr float a = 16.0f / 9.0f;
 	std::vector<std::pair<float, float>> result{};
 	result.reserve(vertices.size());
@@ -124,7 +145,7 @@ void VertexShader(const std::unique_ptr<Framebuffer>& fb, std::vector<uint32_t2>
 			static_cast<float>(vertex.second) / (fb->height / 2.0f) - 1.0f
 		);
 	}
-	PixelShader(fb, vertices, pixels);
+	PixelShader(fb, vertices, colors, pixels);
 }
 
 int main() {
@@ -139,56 +160,63 @@ int main() {
 		{0, fb->height},
 		{fb->width, fb->height}
 	};
+	std::vector<Color> colors{
+		{ 0, 0, 255, 255 },  // top
+		{ 0, 255, 0, 255 },  // bottom left
+		{ 255, 0, 0, 255 }   // bottom right
+	};
+
+	std::cout << "Max threads: " << std::thread::hardware_concurrency() << "\n";
 
 	SDL_Init(SDL_INIT_VIDEO);
-
-	SDL_Window* window{ SDL_CreateWindow(
-	  "Hello Window", fb->width, fb->height, SDL_WINDOW_FULLSCREEN
-	) };
+	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, 0) };
 	SDL_Surface* surface = SDL_GetWindowSurface(window);
-	surface->format = (SDL_PixelFormat)SDL_DEFINE_PIXELFORMAT(SDL_PIXELTYPE_PACKED32, SDL_PACKEDORDER_RGBA, SDL_PACKEDLAYOUT_8888, 32, 4);
+	surface->format = SDL_PIXELFORMAT_RGBA32;
 	memset(surface->pixels, 0xFF, fb->width * fb->height * sizeof(uint32_t));
-	auto pixels = static_cast<uint32_t*>(surface->pixels);
-	std::cout << "Pixel 1 color = (R:" << (pixels[0] & 0xFF) << " G:" << (pixels[0] & 0x00FF) << " B:" << (pixels[0] & 0x0000FF) << ")\n";
+
+
+	auto wave = [](const float x) -> uint32_t
+	{
+		float twoThirdsPi = 2.0f * std::numbers::pi_v<float> / 3.0f;
+
+		const auto channel = [](const float v) -> uint32_t {
+			return static_cast<uint32_t>(0xFF * (0.5f + 0.5f * std::sin(v)));
+			};
+
+		const uint32_t r = channel(x);
+		const uint32_t g = channel(x + twoThirdsPi);
+		const uint32_t b = channel(x + 2.0f * twoThirdsPi);
+		const uint32_t a = static_cast<uint32_t>(0xFF * (0.6f + 0.4f * std::sin(x * 0.5f)));
+
+		return std::byteswap((r << 24) | (g << 16) | (b << 8) | a); // 0xRRGGBBAA
+	};
 
 	bool IsRunning = true;
 	SDL_Event Event;
-
-	auto wave = [](const float x) -> uint32_t
-		{
-			float twoThirdsPi = 2.0f * std::numbers::pi_v<float> / 3.0f;
-
-			const auto channel = [](const float v) -> uint32_t {
-				return static_cast<uint32_t>(0xFF * (0.5f + 0.5f * std::sin(v)));
-				};
-
-			const uint32_t r = channel(x);
-			const uint32_t g = channel(x + twoThirdsPi);
-			const uint32_t b = channel(x + 2.0f * twoThirdsPi);
-			const uint32_t a = static_cast<uint32_t>(0xFF * (0.6f + 0.4f * std::sin(x * 0.5f)));
-
-			return std::byteswap((r << 24) | (g << 16) | (b << 8) | a); // 0xRRGGBBAA
-		};
-
+	uint64_t lastTime = SDL_GetTicks();
+	uint32_t frames = 0;
 	while (IsRunning) {
 		while (SDL_PollEvent(&Event)) {
 			if (Event.type == SDL_EVENT_QUIT) {
 				IsRunning = false;
 			}
 		}
-		//std::fill_n(static_cast<uint32_t*>(surface->pixels), fb->width * fb->height, wave(GetEngineTime() * 0.001));
-
-		//std::fill_n(static_cast<uint32_t*>(surface->pixels), fb->width * 200, std::byteswap(0x00FF00FFu));
-
-		VertexShader(fb, vertices, static_cast<uint32_t*>(surface->pixels));
-		const uint32_t p = static_cast<uint32_t*>(surface->pixels)[fb->height / 2 * 1920 + fb->width / 2] << '\n';
-		std::cout << "(R: " << (p & 0xFF) << " G: " << (p & 0x00FF) << " B: " << (p & 0x0000FF) << ")\n";
+		std::fill_n(static_cast<uint32_t*>(surface->pixels), fb->width * fb->height, wave(GetEngineTime() * 0.001f));
+		VertexShader(fb, vertices, colors, static_cast<uint32_t*>(surface->pixels));
 		SDL_UpdateWindowSurface(window);
+
+		++frames;
+		const uint64_t now = SDL_GetTicks();
+		if (now - lastTime >= 1000) {
+			const std::string title = "Pumpkin Engine | FPS: " + std::to_string(frames);
+			SDL_SetWindowTitle(window, title.c_str());
+			frames = 0;
+			lastTime = now;
+		}
 	}
 
 	SDL_DestroyWindow(window);
 	SDL_Quit();
 
-	std::cout << "Max threads: " << std::thread::hardware_concurrency() << "\n";
 	return 0;
 }

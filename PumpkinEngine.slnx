@@ -1,7 +1,0 @@
-<Solution>
-  <Configurations>
-    <Platform Name="x64" />
-    <Platform Name="x86" />
-  </Configurations>
-  <Project Path="PumpkinEngine/PumpkinEngine.vcxproj" Id="da92a900-b405-4331-966e-e2332711a1bd" />
-</Solution>
