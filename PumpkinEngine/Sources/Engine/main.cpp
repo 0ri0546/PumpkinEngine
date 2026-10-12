@@ -70,6 +70,28 @@ static void DrawTriangle(
 	PixelShader(fb, db, screen, colors);
 }
 
+static void SetMultiResWindowIcon(SDL_Window* window) {
+	SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Pumpkin@32.png");
+	SDL_Surface* icon16 = SDL_LoadPNG("Assets/Pumpkin@16.png");
+	SDL_Surface* icon64 = SDL_LoadPNG("Assets/Pumpkin@64.png");
+
+	if (!baseIcon || !icon16 || !icon64) {
+		SDL_Log("Couldn't load icons : %s", SDL_GetError());
+		return;
+	}
+
+	SDL_AddSurfaceAlternateImage(baseIcon, icon16);
+	SDL_DestroySurface(icon16);
+	SDL_AddSurfaceAlternateImage(baseIcon, icon64);
+	SDL_DestroySurface(icon64);
+
+	if (!SDL_SetWindowIcon(window, baseIcon)) {
+		SDL_Log("Error while setting the window icon : %s", SDL_GetError());
+	}
+
+	SDL_DestroySurface(baseIcon);
+}
+
 int main() {
 	const auto fb = std::make_unique<FrameBuffer>();
 	const auto db = std::make_unique<DepthBuffer>();
@@ -89,6 +111,7 @@ int main() {
 	}
 
 	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, 0) };
+	SetMultiResWindowIcon(window);
 	SDL_Surface* surface = SDL_GetWindowSurface(window);
 	surface->format = SDL_PIXELFORMAT_RGBA32;
 

@@ -18,4 +18,15 @@ if(WIN32)
             "${CMAKE_SOURCE_DIR}/PumpkinEngine/Libraries/SDL3/lib/x64/SDL3.dll"
             $<TARGET_FILE_DIR:PumpkinEngine>
     )
+    target_sources(PumpkinEngine PRIVATE
+            ${CMAKE_SOURCE_DIR}/Assets/Windows/PumpkinEngine.rc
+    )
 endif()
+
+add_custom_target(CopyAssets
+        COMMAND ${CMAKE_COMMAND} -E copy_directory_if_different
+                "${CMAKE_SOURCE_DIR}/Assets/Copy"
+                "$<TARGET_FILE_DIR:PumpkinEngine>/Assets"
+        COMMENT "Copying assets"
+)
+add_dependencies(PumpkinEngine CopyAssets)
