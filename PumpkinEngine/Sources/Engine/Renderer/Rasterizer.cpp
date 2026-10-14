@@ -73,8 +73,6 @@ namespace Pumpkin {
             out.clear();
 
             for (size_t i = 2; i < v.size(); i += 3) {
-                static bool backfaceCulling = true;
-
                 // Copy the vertices to locals (faster than indexing again and again).
                 const float ax = v[i - 2][0], ay = v[i - 2][1], az = v[i - 2][2], ak = v[i - 2][3];
                 const float bx = v[i - 1][0], by = v[i - 1][1], bz = v[i - 1][2], bk = v[i - 1][3];
@@ -82,7 +80,7 @@ namespace Pumpkin {
 
                 // Twice the signed area. Zero means a flat triangle.
                 const float area = (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
-                if (backfaceCulling ? area <= 0.0f : area == 0.0f) continue;
+                if (area == 0.0f) continue;
                 const float invArea = 1.0f / area;
 
                 // Bounding box, clamped to the screen (in float, before the int cast).
@@ -290,7 +288,7 @@ namespace Pumpkin {
         static std::vector<u32> order;
         static std::vector<std::vector<u32>> bins;
 
-        const bool validInput = v.size() % 3 == 0 && colors.size() >= v.size();
+        const bool validInput = true; //v.size() % 3 == 0 && colors.size() >= v.size();
         if (validInput) {
             BuildTriangles(v, colors, w, h, triangles);
             BuildDrawOrder(triangles, order);

@@ -4,6 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include <fstream>
+#include <iostream>
 
 namespace Pumpkin
 {
@@ -286,6 +287,7 @@ std::pair<attrib_t, std::vector<index_t>> LoadObj(const std::filesystem::path& f
                 indices.push_back(face_buffer[0]);
                 indices.push_back(face_buffer[2]);
                 indices.push_back(face_buffer[3]);
+                fCount += 2;
             }
             else if (face_count > 4)
             {
@@ -294,6 +296,7 @@ std::pair<attrib_t, std::vector<index_t>> LoadObj(const std::filesystem::path& f
                     indices.push_back(face_buffer[0]);
                     indices.push_back(face_buffer[i]);
                     indices.push_back(face_buffer[i + 1]);
+					++fCount;
                 }
             }
         }
@@ -303,6 +306,7 @@ std::pair<attrib_t, std::vector<index_t>> LoadObj(const std::filesystem::path& f
     auto then = std::chrono::high_resolution_clock::now();
 
     auto duration = std::chrono::duration_cast<std::chrono::milliseconds>(then - now);
+	std::cout << "Took " << duration.count() << " ms to parse " << filepath.filename().string() << " (" << vCount << " vertices, " << vtCount << " texcoords, " << vnCount << " normals, " << fCount << " faces)" << std::endl;
 
     attribs.vertices.shrink_to_fit();
     attribs.texcoords.shrink_to_fit();

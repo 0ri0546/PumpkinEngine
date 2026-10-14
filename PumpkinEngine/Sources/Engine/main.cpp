@@ -45,33 +45,57 @@ static bool ToScreen(const std::vector<Vec4f>& clip, const FrameBuffer& fb, std:
 	return true;
 }
 
-static std::vector<Vec4f> toVec4(const std::vector<float>& f) {
-    std::vector<Vec4f> res{};
-    for (size_t i = 3; i < f.size() + 1; i += 3) {
-        res.emplace_back(f[i - 3], f[i - 2], f[i - 1], 1.0f);
-    }
-    return res;
+static std::vector<Vec4f> toVec4(const std::vector<float>& f, const std::vector<index_t>& indices, const float scale = 1.0f)
+{
+	std::vector<Vec4f> res;
+	res.reserve(indices.size());
+
+	for (const auto& idx : indices) {
+		size_t base = static_cast<size_t>(idx.vertex_index) * 3;
+		if (base + 2 >= f.size()) continue; // safety check
+		res.emplace_back(f[base], f[base + 1] - scale / 2.0f, f[base + 2], scale);
+	}
+
+	return res;
+}
+
+static std::vector<Color> GenerateRNGRGB(size_t count) {
+	std::vector<Color> colors;
+	colors.reserve(count);
+	for (size_t i = 0; i < count; ++i) {
+		colors.emplace_back(
+			127,
+			127,
+			127,
+			127
+		);
+	}
+	return colors;
 }
 
 // Pipeline: input -> clip -> screen -> raster
-static void DrawTriangle(
+static void DrawWhatever(
 	const FrameBuffer& fb,
 	DepthBuffer& db)
 {
-	// Triangle defined in NDC coordinates
-	static std::vector<Vec4f> vertices = toVec4(LoadObj("Assets/cube.obj").first.vertices);
+	static const auto [attribs, indices] = LoadObj("Assets/pioche.obj");
+	static std::vector<Vec4f> vertices = toVec4(attribs.vertices, indices, 2.0f);
+
+	// BGRA8
+	static const std::vector<Color> colors = GenerateRNGRGB(vertices.size());
+
 	static const std::vector<Vec4f> originalVertices = vertices;
     static constexpr float speed = 1.0f;
 
     const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
-    // Toggles (make these members or UI checkboxes, whatever fits your app)
-    bool rotateX = true;
+    // Toggle
+    bool rotateX = false;
     bool rotateY = true;
     bool rotateZ = false;
 
     // Rotation center. Your cube spans z 0..1, so its center is z = 0.5.
-    constexpr float pivotX = 0.0f, pivotY = 0.0f, pivotZ = 0.5f;
+    constexpr float pivotX = 0.0f, pivotY = -1.0f, pivotZ = 0.5f;
     constexpr float zScale = 0.5f / 0.8660254f;
 
     const float angle = t * speed;
@@ -110,24 +134,9 @@ static void DrawTriangle(
         vertices[i][0] = x3 + pivotX;
         vertices[i][1] = y3 + pivotY;
         vertices[i][2] = z3 * zScale + pivotZ;
-        vertices[i][3] = originalVertices[i][3]; // keep w / k untouched
+		vertices[i][3] = originalVertices[i][3]; // keep w / k untouched
     }
 
-	// BGRA8
-	static const std::vector<Color> colors{
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
-    };
 	const std::vector<Vec4f> clip = VertexShader(vertices);
 
 	std::vector<Vec4f> screen{};
@@ -173,14 +182,15 @@ int main() {
 	{
 		const SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
 		const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-		fb->width = mode->h / 2, fb->height = mode->h / 2;
-		db->width = mode->h / 2, db->height = mode->h / 2;
+		fb->width = mode->h - 200, fb->height = mode->h - 200;
+		db->width = mode->h - 200, db->height = mode->h - 200;
 		db->pixels.resize(static_cast<size_t>(db->width) * db->height, 1.0f);
-	    if (mode->refresh_rate != 0.0f) TARGET_FPS = mode->refresh_rate;
+		if (mode->refresh_rate != 0.0f) TARGET_FPS = 9999999;//mode->refresh_rate;
 		SDL_free((void*)ids);
 	}
 
-	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, SDL_WINDOW_TRANSPARENT) };
+	static const auto flags = SDL_WINDOW_BORDERLESS | SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
+	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, flags) };
 	SetMultiResWindowIcon(window);
 	SDL_Surface* surface = SDL_GetWindowSurface(window);
 	surface->format = SDL_PIXELFORMAT_RGBA32;
@@ -198,17 +208,21 @@ int main() {
 			if (Event.type == SDL_EVENT_QUIT) {
 				IsRunning = false;
 			}
+			if (Event.type == SDL_EVENT_WINDOW_RESIZED) {
+				SDL_UpdateWindowSurface(window);
+				surface = SDL_GetWindowSurface(window);
+				fb->width = Event.window.data1;
+				fb->height = Event.window.data2;
+				db->width = Event.window.data1;
+				db->height = Event.window.data2;
+				db->pixels.resize(static_cast<size_t>(db->width * db->height), 1.0f);
+				fb->pixels = static_cast<uint32_t*>(surface->pixels);
+			}
 		}
 
 		fb->pixels = static_cast<uint32_t*>(surface->pixels);
-		if constexpr (std::endian::native == std::endian::little) {
-			std::fill_n(fb->pixels, fb->width * fb->height, std::byteswap(0x000000FFu));
-		}
-		else {
-			std::fill_n(fb->pixels, fb->width * fb->height, 0x000000FFu);
-		}
 		std::ranges::fill(db->pixels, 1.0f);
-		DrawTriangle(*fb, *db);
+		DrawWhatever(*fb, *db);
 		SDL_UpdateWindowSurface(window);
 
 		++frames;
