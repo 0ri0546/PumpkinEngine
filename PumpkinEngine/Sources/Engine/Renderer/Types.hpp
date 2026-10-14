@@ -1,10 +1,7 @@
 #pragma once
 
 #include <cstdint>
-#include <utility>
 #include <vector>
-
-#include <Math/Vec.h>
 
 namespace Pumpkin {
     // 8-bit color depth
@@ -17,6 +14,7 @@ namespace Pumpkin {
 
     struct FrameBuffer {
         uint32_t* pixels{ nullptr };
+        uint32_t clearColor{ 0x00000000u };
         uint16_t width{}, height{};
     };
 

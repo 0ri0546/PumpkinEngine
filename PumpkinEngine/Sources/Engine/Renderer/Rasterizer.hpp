@@ -1,18 +1,15 @@
 #pragma once
 
-#include "Types.hpp"
+#include <Math/Vec.h>
+#include <Renderer/Types.hpp>
 
-#include <cstdint>
-#include <utility>
-#include <vector>
+#include <span>
 
 namespace Pumpkin {
-    void Rasterize(
-        const std::pair<Vec2u, Vec2u>& group,
-        const std::vector<Vec4f>& v,
-        const std::vector<Color>& colors,
-        float* depth,
-        uint32_t* pixels,
-        uint32_t width
+    void RasterizeFrame(
+        std::span<const Vec4f> vertices,
+        std::span<const Color> colors,
+        const FrameBuffer& fb,
+        DepthBuffer& db
     );
 }

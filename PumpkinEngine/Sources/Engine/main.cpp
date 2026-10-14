@@ -16,6 +16,7 @@
 #include <Renderer/Shaders.hpp>
 #include <Renderer/Types.hpp>
 #include <Utils/Utils.hpp>
+#include <Utils/ObjParser.hpp>
 
 using namespace Pumpkin;
 
@@ -44,23 +45,89 @@ static bool ToScreen(const std::vector<Vec4f>& clip, const FrameBuffer& fb, std:
 	return true;
 }
 
+static std::vector<Vec4f> toVec4(const std::vector<float>& f) {
+    std::vector<Vec4f> res{};
+    for (size_t i = 3; i < f.size() + 1; i += 3) {
+        res.emplace_back(f[i - 3], f[i - 2], f[i - 1], 1.0f);
+    }
+    return res;
+}
+
 // Pipeline: input -> clip -> screen -> raster
 static void DrawTriangle(
 	const FrameBuffer& fb,
 	DepthBuffer& db)
 {
 	// Triangle defined in NDC coordinates
-	static const std::vector<Vec4f> vertices{
-		{  0.0f,  1.0f, 0.0f, 1.0f },  // top
-		{ -1.0f, -1.0f, 0.0f, 1.0f },  // bottom left
-		{  1.0f, -1.0f, 0.0f, 1.0f }   // bottom right
-	};
+	static std::vector<Vec4f> vertices = toVec4(LoadObj("Assets/cube.obj").first.vertices);
+	static const std::vector<Vec4f> originalVertices = vertices;
+    static constexpr float speed = 1.0f;
+
+    const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
+
+    // Toggles (make these members or UI checkboxes, whatever fits your app)
+    bool rotateX = true;
+    bool rotateY = true;
+    bool rotateZ = false;
+
+    // Rotation center. Your cube spans z 0..1, so its center is z = 0.5.
+    constexpr float pivotX = 0.0f, pivotY = 0.0f, pivotZ = 0.5f;
+    constexpr float zScale = 0.5f / 0.8660254f;
+
+    const float angle = t * speed;
+
+    // Angle is 0 for a disabled axis, which makes that rotation a no-op.
+    const float angleX = rotateX ? angle : 0.0f;
+    const float angleY = rotateY ? angle : 0.0f;
+    const float angleZ = rotateZ ? angle : 0.0f;
+
+    const float cx = std::cos(angleX), sx = std::sin(angleX);
+    const float cy = std::cos(angleY), sy = std::sin(angleY);
+    const float cz = std::cos(angleZ), sz = std::sin(angleZ);
+
+    for (size_t i = 0; i < vertices.size(); ++i) {
+        // Move so the pivot is at the origin
+        const float x = originalVertices[i][0] - pivotX;
+        const float y = originalVertices[i][1] - pivotY;
+        const float z = originalVertices[i][2] - pivotZ;
+
+        // Rotate around X
+        const float x1 = x;
+        const float y1 = y * cx - z * sx;
+        const float z1 = y * sx + z * cx;
+
+        // Rotate around Y
+        const float x2 = x1 * cy + z1 * sy;
+        const float y2 = y1;
+        const float z2 = -x1 * sy + z1 * cy;
+
+        // Rotate around Z
+        const float x3 = x2 * cz - y2 * sz;
+        const float y3 = x2 * sz + y2 * cz;
+        const float z3 = z2;
+
+        // Move back
+        vertices[i][0] = x3 + pivotX;
+        vertices[i][1] = y3 + pivotY;
+        vertices[i][2] = z3 * zScale + pivotZ;
+        vertices[i][3] = originalVertices[i][3]; // keep w / k untouched
+    }
+
 	// BGRA8
 	static const std::vector<Color> colors{
-		{ 0, 0, 255, 255 },  // top
-		{ 0, 255, 0, 255 },  // bottom left
-		{ 255, 0, 0, 255 }   // bottom right
-	};
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+        Color{ 255, 0, 0, 127 }, Color{ 0, 255, 0, 127 }, Color{ 0, 0, 255, 127 },
+    };
 	const std::vector<Vec4f> clip = VertexShader(vertices);
 
 	std::vector<Vec4f> screen{};
@@ -96,6 +163,7 @@ static void SetMultiResWindowIcon(SDL_Window* window) {
 int main() {
 	const auto fb = std::make_unique<FrameBuffer>();
 	const auto db = std::make_unique<DepthBuffer>();
+    uint64_t TARGET_FPS = 120;
 
 	if (!SDL_Init(SDL_INIT_VIDEO)) {
 		std::println("SDL could not initialize! SDL Error: {}", SDL_GetError());
@@ -105,13 +173,14 @@ int main() {
 	{
 		const SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
 		const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-		fb->width = mode->w / 2, fb->height = mode->h / 2;
-		db->width = mode->w / 2, db->height = mode->h / 2;
+		fb->width = mode->h / 2, fb->height = mode->h / 2;
+		db->width = mode->h / 2, db->height = mode->h / 2;
 		db->pixels.resize(static_cast<size_t>(db->width) * db->height, 1.0f);
+	    if (mode->refresh_rate != 0.0f) TARGET_FPS = mode->refresh_rate;
 		SDL_free((void*)ids);
 	}
 
-	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, 0) };
+	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, SDL_WINDOW_TRANSPARENT) };
 	SetMultiResWindowIcon(window);
 	SDL_Surface* surface = SDL_GetWindowSurface(window);
 	surface->format = SDL_PIXELFORMAT_RGBA32;
@@ -120,8 +189,7 @@ int main() {
 	SDL_Event Event;
 	uint64_t lastTime = SDL_GetTicks();
 	uint32_t frames = 0;
-	constexpr uint64_t TARGET_FPS = 120;
-	constexpr auto FRAME_TIME = std::chrono::nanoseconds(1'000'000'000 / TARGET_FPS);
+	const auto FRAME_TIME = std::chrono::nanoseconds(1'000'000'000 / TARGET_FPS);
 	auto next = std::chrono::steady_clock::now();
 	while (IsRunning) {
 		next += FRAME_TIME;
