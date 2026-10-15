@@ -1,223 +1,357 @@
-#include <cstdint>
-#include <cmath>
-#include <vector>
-#include <thread>
-#include <iostream>
 #include <chrono>
-#include <numbers>
-#include <algorithm>
-#include <bit>
-#include <string>
+#include <cstddef>
+#include <cstdint>
+#include <filesystem>
+#include <format>
+#include <memory>
+#include <print>
+#include <random>
+#include <thread>
+#include <unordered_map>
+#include <vector>
 
 #include <SDL3/SDL.h>
 
-// forces 8 bit colors
-struct alignas(4) Color {
-	uint8_t r{ 0 };
-	uint8_t g{ 0 };
-	uint8_t b{ 0 };
-	uint8_t a{ 255 };
-};
+#include <Renderer/Rasterizer.hpp>
+#include <Renderer/Shaders.hpp>
+#include <Renderer/Types.hpp>
+#include <Utils/ObjParser.hpp>
+#include <Utils/Utils.hpp>
 
-struct Framebuffer {
-	std::vector<Color> pixels{};
-	uint16_t width{ 1920 }, height{ 1080 };
-};
+using namespace Pumpkin;
 
-struct DepthBuffer {
-	std::vector<float> pixels{};
-	uint16_t width{ 1920 }, height{ 1080 };
-};
+namespace {
 
-static float GetEngineTime() {
-	using namespace std::chrono;
-	static const auto start = steady_clock::now();
-	return static_cast<float>(std::chrono::duration_cast<milliseconds>(steady_clock::now() - start).count());
-}
+    constexpr uint64_t kDefaultTargetFps = 120;
+    constexpr uint64_t kUncappedFps      = 9'999'999;
+    constexpr float    kDefaultVertexW   = 110.0f;
+    constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
-using float2 = std::pair<float, float>;
-using uint32_t2 = std::pair<uint32_t, uint32_t>;
+    // ---------------------------------------------------------------------------
+    // Geometry helpers
+    // ---------------------------------------------------------------------------
 
-static float Dot(const float2& a, const float2& b) {
-	return a.first * b.first + a.second * b.second;
-}
+    // Clip space -> screen space (perspective divide + viewport transform).
+    // Returns false if any vertex is behind the camera (no real clipping yet).
+    bool ToScreen(const std::vector<Vertex>& clip, const FrameBuffer& fb, std::vector<Vertex>& out) {
+        out.clear();
+        out.reserve(clip.size());
 
-static float Distance(const float2& a, const float2& b) {
-	return static_cast<float>(std::sqrt(std::pow(b.first - a.first, 2) + std::pow(b.second - a.second, 2)));
-}
+        const auto width  = static_cast<float>(fb.width);
+        const auto height = static_cast<float>(fb.height);
 
-static float2 Perpendicular(const float2& v) {
-	return float2(v.second, -v.first);
-}
+        for (const auto& c : clip) {
+            const float w = c.position[3];
+            if (w <= 0.0f) {
+                return false; // behind the camera, reject until real clipping exists
+            }
+            const float invW = 1.0f / w;
 
-static bool OnRightSide(const float2& a, const float2& b, const float2& p) {
-	float2 ap = float2(p.first - a.first, p.second - a.second);
-	float2 abPerp = Perpendicular(float2(b.first - a.first, b.second - a.second));
-	return Dot(ap, abPerp) >= 0;
-}
+            // NDC: x,y in [-1, 1], z in [0, 1]
+            const float ndcX = c.position[0] * invW;
+            const float ndcY = c.position[1] * invW;
+            const float ndcZ = c.position[2] * invW;
 
-static bool PointOnTriangle(const float2& a, const float2& b, const float2& c, const float2& p) {
-	return OnRightSide(a, b, p) && OnRightSide(b, c, p) && OnRightSide(c, a, p);
-}
+            out.emplace_back(
+                Vec4f{
+                    (ndcX * 0.5f + 0.5f) * width,
+                    (0.5f - ndcY * 0.5f) * height, // Y flip: NDC is up, pixels are down
+                    ndcZ,
+                    invW
+                },
+                c.texcoord,
+                c.normal
+            );
+        }
+        return true;
+    }
 
-static uint32_t ToRGBA(float r, float g, float b, float a = 1.0f) {
-	return std::byteswap(
-		(static_cast<uint32_t>(r * 255) << 24) + 
-		(static_cast<uint32_t>(g * 255) << 16) + 
-		(static_cast<uint32_t>(b * 255) << 8) + 
-		(static_cast<uint32_t>(a * 255))
-	);
-}
+    // ---------------------------------------------------------------------------
+    // Color helpers
+    // ---------------------------------------------------------------------------
 
-void Rasterize(
-	const std::pair<uint32_t2, uint32_t2>& group,
-	const std::vector<uint32_t2>& vertices,
-	const std::vector<Color>& colors,
-	uint32_t* pixels)
-{
-	auto edge = [](const uint32_t2& a, const uint32_t2& b, float px, float py) {
-		return (px - a.first) * ((float)b.second - a.second)
-			- (py - a.second) * ((float)b.first - a.first);
-		};
+    std::vector<Color> GenerateRGB(size_t count, int r, int g, int b) {
+        return std::vector<Color>(count, Color(r, g, b, 127));
+    }
 
-	const float area = edge(vertices[0], vertices[1], (float)vertices[2].first, (float)vertices[2].second);
+    [[maybe_unused]] std::vector<Color> GenerateRNGRGB(size_t count) {
+        static std::random_device dev{};
+        static std::mt19937 rng{ dev() };
+        static std::uniform_int_distribution<int> dist(0, 256);
 
-	for (uint32_t y = group.first.second; y < group.second.second; ++y) {
-		for (uint32_t x = group.first.first; x < group.second.first; ++x) {
-#pragma warning(push)
-#pragma warning(disable : 4244)
-			if (PointOnTriangle(vertices[0], vertices[1], vertices[2], {x, y})) {
-#pragma warning(pop)
-				// how much each vertex contributes at this pixel (sums to 1)
-				const float w0 = edge(vertices[1], vertices[2], (float)x, (float)y) / area;
-				const float w1 = edge(vertices[2], vertices[0], (float)x, (float)y) / area;
-				const float w2 = 1.0f - w0 - w1;
+        std::vector<Color> colors;
+        colors.reserve(count);
+        for (size_t i = 0; i < count; ++i) {
+            colors.emplace_back(dist(rng), dist(rng), dist(rng), 127);
+        }
+        return colors;
+    }
 
-				pixels[y * 1920 + x] = ToRGBA(
-					(w0 * colors[0].r + w1 * colors[1].r + w2 * colors[2].r) / 255.0f,
-					(w0 * colors[0].g + w1 * colors[1].g + w2 * colors[2].g) / 255.0f,
-					(w0 * colors[0].b + w1 * colors[1].b + w2 * colors[2].b) / 255.0f);
-			}
-		}
-	}
-}
+    // ---------------------------------------------------------------------------
+    // Mesh loading / drawing
+    // ---------------------------------------------------------------------------
 
-void PixelShader(const std::unique_ptr<Framebuffer>& fb, const std::vector<uint32_t2>& vertices, const std::vector<Color>& colors, uint32_t* pixels) {
-	std::vector<std::jthread> threads{};
-	const unsigned threadCount = std::max(1u, std::thread::hardware_concurrency()) - 2;
+    Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = true) {
+        if (filepath.extension().string() != ".obj") return Mesh{};
 
-	std::vector<std::pair<uint32_t2, uint32_t2>> groups{};
-	groups.reserve(threadCount);
+        const auto [attribs, objIndices] = LoadObj(filepath);
 
-	const uint32_t rowsPerGroup = fb->height / threadCount;
-	const uint32_t remainder = fb->height % threadCount;
+        Mesh mesh;
+        mesh.vertices.reserve(objIndices.size());
+        mesh.indices.reserve(objIndices.size());
 
-	uint32_t y = 0;
+        std::unordered_map<IndexKey, uint32_t> seen;
+        if (deduplicate) seen.reserve(objIndices.size());
 
-	for (size_t i = 0; i < threadCount; ++i) {
-		const uint32_t rows = rowsPerGroup + (i < remainder ? 1 : 0);
+        for (const auto& idx : objIndices) {
+            const size_t pos = static_cast<size_t>(idx.vertex_index) * 3;
+            if (pos + 2 >= attribs.vertices.size()) {
+                continue;
+            }
 
-		groups.push_back({
-			{ 0, y },
-			{ fb->width, y + rows }
-		});
+            const auto vertexIndex = static_cast<uint32_t>(mesh.vertices.size());
 
-		y += rows;
-	}
+            if (deduplicate) {
+                const IndexKey key{
+                    idx.vertex_index,
+                    idx.texcoord_index,
+                    idx.normal_index
+                };
 
-	for (const auto group : groups) {
-		threads.emplace_back([group, &vertices, &pixels, &colors]() {
-			Rasterize(group, vertices, colors, pixels);
-		});
-	}
-	for (auto& thread : threads) {
-		thread.join();
-	}
-}
+                // Duplicate: reuse the old vertex, add no new one
+                if (const auto it = seen.find(key); it != seen.end()) {
+                    mesh.indices.push_back(it->second);
+                    continue;
+                }
+                seen.emplace(key, vertexIndex);
+            }
 
-void VertexShader(const std::unique_ptr<Framebuffer>& fb, std::vector<uint32_t2>& vertices, const std::vector<Color>& colors, uint32_t* pixels) {
-	static constexpr float a = 16.0f / 9.0f;
-	std::vector<std::pair<float, float>> result{};
-	result.reserve(vertices.size());
-	int c = 0;
-	for (const auto& vertex : vertices) {
-		result.emplace_back(
-			static_cast<float>(vertex.first) / (fb->width / 2.0f) - 1.0f, 
-			static_cast<float>(vertex.second) / (fb->height / 2.0f) - 1.0f
-		);
-	}
-	PixelShader(fb, vertices, colors, pixels);
-}
+            Vec2f uv{};
+            if (idx.texcoord_index != kInvalidIndex) {
+                const size_t i = static_cast<size_t>(idx.texcoord_index) * 2;
+                if (i + 1 < attribs.texcoords.size()) {
+                    uv = { attribs.texcoords[i], attribs.texcoords[i + 1] };
+                }
+            }
+
+            Vec3f normal{};
+            if (idx.normal_index != kInvalidIndex) {
+                const size_t i = static_cast<size_t>(idx.normal_index) * 3;
+                if (i + 2 < attribs.normals.size()) {
+                    normal = { attribs.normals[i], attribs.normals[i + 1], attribs.normals[i + 2] };
+                }
+            }
+
+            // New vertex: its index is its position in mesh.vertices
+            mesh.indices.push_back(vertexIndex);
+            mesh.vertices.emplace_back(
+                Vec4f{
+                    attribs.vertices[pos],
+                    attribs.vertices[pos + 1] - kDefaultVertexW / 2.0f,
+                    attribs.vertices[pos + 2],
+                    kDefaultVertexW
+                },
+                uv,
+                normal
+            );
+        }
+
+        mesh.colors = GenerateRGB(mesh.vertices.size(), 255, 142, 0);
+        return mesh;
+    }
+
+    // Pipeline: input -> clip -> screen -> pixel shader
+    // (the pixel shader calls the rasterizer, then shades during rasterization)
+    void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
+        {
+            static const std::vector<Vertex> originalVertices = mesh.vertices;
+            static constexpr float speed = 1.0f;
+
+            const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
+
+            // Toggle
+            bool rotateX = false;
+            bool rotateY = true;
+            bool rotateZ = false;
+
+            // Rotation center. Your cube spans z 0..1, so its center is z = 0.5.
+            constexpr float pivotX = 0.0f, pivotY = -1.0f, pivotZ = 0.5f;
+            constexpr float zScale = 0.5f / 0.8660254f;
+
+            const float angle = t * speed;
+
+            // Angle is 0 for a disabled axis, which makes that rotation a no-op.
+            const float angleX = rotateX ? angle : 0.0f;
+            const float angleY = rotateY ? angle : 0.0f;
+            const float angleZ = rotateZ ? angle : 0.0f;
+
+            const float cx = std::cos(angleX), sx = std::sin(angleX);
+            const float cy = std::cos(angleY), sy = std::sin(angleY);
+            const float cz = std::cos(angleZ), sz = std::sin(angleZ);
+
+            for (size_t i = 0; i < mesh.vertices.size(); ++i) {
+                // Move so the pivot is at the origin
+                const float x = originalVertices[i].position[0] - pivotX;
+                const float y = originalVertices[i].position[1] - pivotY;
+                const float z = originalVertices[i].position[2] - pivotZ;
+
+                // Rotate around X
+                const float x1 = x;
+                const float y1 = y * cx - z * sx;
+                const float z1 = y * sx + z * cx;
+
+                // Rotate around Y
+                const float x2 = x1 * cy + z1 * sy;
+                const float y2 = y1;
+                const float z2 = -x1 * sy + z1 * cy;
+
+                // Rotate around Z
+                const float x3 = x2 * cz - y2 * sz;
+                const float y3 = x2 * sz + y2 * cz;
+                const float z3 = z2;
+
+                // Move back
+                mesh.vertices[i].position[0] = x3 + pivotX;
+                mesh.vertices[i].position[1] = y3 + pivotY;
+                mesh.vertices[i].position[2] = z3 * zScale + pivotZ;
+                mesh.vertices[i].position[3] = originalVertices[i].position[3]; // keep w / k untouched
+            }
+
+        }
+        const std::vector<Vertex> clip = VertexShader(mesh.vertices);
+
+        std::vector<Vertex> screen;
+        if (!ToScreen(clip, fb, screen)) {
+            return;
+        }
+
+        PixelShader(fb, db, screen, mesh.indices, mesh.colors);
+    }
+
+    // ---------------------------------------------------------------------------
+    // Window / buffers
+    // ---------------------------------------------------------------------------
+
+    void SetMultiResWindowIcon(SDL_Window* window) {
+        SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Pumpkin@32.png");
+        SDL_Surface* icon16   = SDL_LoadPNG("Assets/Pumpkin@16.png");
+        SDL_Surface* icon64   = SDL_LoadPNG("Assets/Pumpkin@64.png");
+
+        if (!baseIcon || !icon16 || !icon64) {
+            SDL_Log("Couldn't load icons : %s", SDL_GetError());
+            // SDL_DestroySurface(nullptr) is a safe no-op; release whatever did load.
+            SDL_DestroySurface(baseIcon);
+            SDL_DestroySurface(icon16);
+            SDL_DestroySurface(icon64);
+            return;
+        }
+
+        // The alternate images are ref-counted by SDL, so our handles can go right away.
+        SDL_AddSurfaceAlternateImage(baseIcon, icon16);
+        SDL_DestroySurface(icon16);
+        SDL_AddSurfaceAlternateImage(baseIcon, icon64);
+        SDL_DestroySurface(icon64);
+
+        if (!SDL_SetWindowIcon(window, baseIcon)) {
+            SDL_Log("Error while setting the window icon : %s", SDL_GetError());
+        }
+
+        SDL_DestroySurface(baseIcon);
+    }
+
+    void ResizeBuffers(FrameBuffer& fb, DepthBuffer& db, int width, int height) {
+        fb.width  = width;
+        fb.height = height;
+        db.width  = width;
+        db.height = height;
+        db.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height), 1.0f);
+    }
+
+} // namespace
+
+// ---------------------------------------------------------------------------
 
 int main() {
-	GetEngineTime();
-	std::unique_ptr<Framebuffer> fb = std::make_unique<Framebuffer>();
-	fb->pixels.reserve(static_cast<size_t>(fb->width * fb->height));
-	std::unique_ptr<DepthBuffer> db = std::make_unique<DepthBuffer>();
-	db->pixels.reserve(static_cast<size_t>(db->width * db->height));
+    const auto fb = std::make_unique<FrameBuffer>();
+    const auto db = std::make_unique<DepthBuffer>();
+    uint64_t targetFps = kDefaultTargetFps;
 
-	std::vector<std::pair<uint32_t, uint32_t>> vertices{
-		{fb->width / 2, 0},
-		{0, fb->height},
-		{fb->width, fb->height}
-	};
-	std::vector<Color> colors{
-		{ 0, 0, 255, 255 },  // top
-		{ 0, 255, 0, 255 },  // bottom left
-		{ 255, 0, 0, 255 }   // bottom right
-	};
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        std::println("SDL could not initialize! SDL Error: {}", SDL_GetError());
+        return 1;
+    }
 
-	std::cout << "Max threads: " << std::thread::hardware_concurrency() << "\n";
+    {
+        SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
+        const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
+        ResizeBuffers(*fb, *db, mode->h - 200, mode->h - 200);
+        if (mode->refresh_rate != 0.0f) {
+            targetFps = kUncappedFps;//static_cast<std::int32_t>(mode->refresh_rate);
+        }
+        SDL_free(ids);
+    }
 
-	SDL_Init(SDL_INIT_VIDEO);
-	SDL_Window* window{ SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, 0) };
-	SDL_Surface* surface = SDL_GetWindowSurface(window);
-	surface->format = SDL_PIXELFORMAT_RGBA32;
-	memset(surface->pixels, 0xFF, fb->width * fb->height * sizeof(uint32_t));
+    constexpr SDL_WindowFlags flags = 0 | SDL_WINDOW_TRANSPARENT | 0;
+    SDL_Window* window = SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, flags);
+    if (!window) {
+        std::println("Could not create window! SDL Error: {}", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    SetMultiResWindowIcon(window);
 
+    SDL_Surface* surface = SDL_GetWindowSurface(window);
+    surface->format = SDL_PIXELFORMAT_RGBA32;
 
-	auto wave = [](const float x) -> uint32_t
-	{
-		float twoThirdsPi = 2.0f * std::numbers::pi_v<float> / 3.0f;
+    Mesh teapot = LoadMesh("Assets/pumpkin_.obj");
 
-		const auto channel = [](const float v) -> uint32_t {
-			return static_cast<uint32_t>(0xFF * (0.5f + 0.5f * std::sin(v)));
-			};
+    const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
+    auto nextFrame = std::chrono::steady_clock::now();
 
-		const uint32_t r = channel(x);
-		const uint32_t g = channel(x + twoThirdsPi);
-		const uint32_t b = channel(x + 2.0f * twoThirdsPi);
-		const uint32_t a = static_cast<uint32_t>(0xFF * (0.6f + 0.4f * std::sin(x * 0.5f)));
+    uint64_t lastFpsUpdate = SDL_GetTicks();
+    uint32_t frames = 0;
+    bool isRunning = true;
 
-		return std::byteswap((r << 24) | (g << 16) | (b << 8) | a); // 0xRRGGBBAA
-	};
+    while (isRunning) {
+        nextFrame += frameTime;
 
-	bool IsRunning = true;
-	SDL_Event Event;
-	uint64_t lastTime = SDL_GetTicks();
-	uint32_t frames = 0;
-	while (IsRunning) {
-		while (SDL_PollEvent(&Event)) {
-			if (Event.type == SDL_EVENT_QUIT) {
-				IsRunning = false;
-			}
-		}
-		std::fill_n(static_cast<uint32_t*>(surface->pixels), fb->width * fb->height, wave(GetEngineTime() * 0.001f));
-		VertexShader(fb, vertices, colors, static_cast<uint32_t*>(surface->pixels));
-		SDL_UpdateWindowSurface(window);
+        SDL_Event event;
+        while (SDL_PollEvent(&event)) {
+            switch (event.type) {
+            case SDL_EVENT_QUIT:
+                isRunning = false;
+                break;
 
-		++frames;
-		const uint64_t now = SDL_GetTicks();
-		if (now - lastTime >= 1000) {
-			const std::string title = "Pumpkin Engine | FPS: " + std::to_string(frames);
-			SDL_SetWindowTitle(window, title.c_str());
-			frames = 0;
-			lastTime = now;
-		}
-	}
+            case SDL_EVENT_WINDOW_RESIZED:
+                SDL_UpdateWindowSurface(window);
+                surface = SDL_GetWindowSurface(window);
+                ResizeBuffers(*fb, *db, event.window.data1, event.window.data2);
+                break;
 
-	SDL_DestroyWindow(window);
-	SDL_Quit();
+            default:
+                break;
+            }
+        }
 
-	return 0;
+        fb->pixels = static_cast<uint32_t*>(surface->pixels);
+
+        DrawMesh(teapot, *fb, *db);
+        SDL_UpdateWindowSurface(window);
+
+        // FPS counter in the window title, refreshed once per second.
+        ++frames;
+        const uint64_t now = SDL_GetTicks();
+        if (now - lastFpsUpdate >= 1000) {
+            SDL_SetWindowTitle(window, std::format("Pumpkin Engine | FPS: {}", frames).c_str());
+            frames = 0;
+            lastFpsUpdate = now;
+        }
+
+        std::this_thread::sleep_until(nextFrame);
+    }
+
+    SDL_DestroyWindow(window);
+    SDL_Quit();
+
+    return 0;
 }

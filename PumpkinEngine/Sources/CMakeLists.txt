@@ -3,3 +3,6 @@ add_subdirectory(ThirdParty)
 
 target_link_libraries(PumpkinEngine PRIVATE PumpkinThirdParty)
 
+if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_link_libraries(PumpkinEngine PRIVATE stdc++exp)
+endif()
