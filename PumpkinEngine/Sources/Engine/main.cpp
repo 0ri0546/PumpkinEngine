@@ -67,27 +67,6 @@ namespace {
     }
 
     // ---------------------------------------------------------------------------
-    // Color helpers
-    // ---------------------------------------------------------------------------
-
-    std::vector<Color> GenerateRGB(size_t count, int r, int g, int b) {
-        return std::vector<Color>(count, Color(r, g, b, 127));
-    }
-
-    [[maybe_unused]] std::vector<Color> GenerateRNGRGB(size_t count) {
-        static std::random_device dev{};
-        static std::mt19937 rng{ dev() };
-        static std::uniform_int_distribution<int> dist(0, 256);
-
-        std::vector<Color> colors;
-        colors.reserve(count);
-        for (size_t i = 0; i < count; ++i) {
-            colors.emplace_back(dist(rng), dist(rng), dist(rng), 127);
-        }
-        return colors;
-    }
-
-    // ---------------------------------------------------------------------------
     // Mesh loading / drawing
     // ---------------------------------------------------------------------------
 
@@ -156,7 +135,7 @@ namespace {
             );
         }
 
-        mesh.colors = GenerateRGB(mesh.vertices.size(), 255, 142, 0);
+        mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 142, 0, 175);
         return mesh;
     }
 
@@ -225,7 +204,15 @@ namespace {
             return;
         }
 
-        PixelShader(fb, db, screen, mesh.indices, mesh.colors);
+        static Rasterizer rasterizer{
+            .ClearColor = { 0x00000000u },
+            .Culling = CullMode::Back,
+            .DepthTest = DepthTestMode::Less,
+            .AlphaBlend = BlendMode::Alpha,
+            .Projection = CameraType::Perspective
+        };
+
+        PixelShader(rasterizer, fb, db, screen, mesh.indices, mesh.colors);
     }
 
     // ---------------------------------------------------------------------------
@@ -284,14 +271,14 @@ int main() {
     {
         SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-        ResizeBuffers(*fb, *db, mode->h - 200, mode->h - 200);
+        ResizeBuffers(*fb, *db, mode->h / 2, mode->h / 2);
         if (mode->refresh_rate != 0.0f) {
             targetFps = kUncappedFps;//static_cast<std::int32_t>(mode->refresh_rate);
         }
         SDL_free(ids);
     }
 
-    constexpr SDL_WindowFlags flags = 0 | SDL_WINDOW_TRANSPARENT | 0;
+    constexpr SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
     SDL_Window* window = SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, flags);
     if (!window) {
         std::println("Could not create window! SDL Error: {}", SDL_GetError());
@@ -303,7 +290,7 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh teapot = LoadMesh("Assets/pumpkin_.obj");
+    Mesh pumpkin = LoadMesh("Assets/Pumpkin.obj");
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
     auto nextFrame = std::chrono::steady_clock::now();
@@ -325,6 +312,7 @@ int main() {
             case SDL_EVENT_WINDOW_RESIZED:
                 SDL_UpdateWindowSurface(window);
                 surface = SDL_GetWindowSurface(window);
+                surface->format = SDL_PIXELFORMAT_RGBA32;
                 ResizeBuffers(*fb, *db, event.window.data1, event.window.data2);
                 break;
 
@@ -335,7 +323,7 @@ int main() {
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
-        DrawMesh(teapot, *fb, *db);
+        DrawMesh(pumpkin, *fb, *db);
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.

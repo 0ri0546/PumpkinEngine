@@ -1,12 +1,12 @@
 #pragma once
 
 #include <Renderer/Types.hpp>
-
-#include <Math/Vec.h>
+#include <Renderer/Rasterizer.hpp>
 
 namespace Pumpkin {
     std::vector<Vertex> VertexShader(const std::vector<Vertex>& vertices);
     void PixelShader(
+		Rasterizer& rasterizer,
         const FrameBuffer& fb,
         DepthBuffer& db,
         const std::vector<Vertex>& vertices,

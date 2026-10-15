@@ -27,4 +27,6 @@ namespace Pumpkin {
         bool m_stop = false;
         std::vector<std::jthread> m_threads; // last member: joined first
     };
+
+    [[nodiscard]] ThreadPool& GetPool();
 }

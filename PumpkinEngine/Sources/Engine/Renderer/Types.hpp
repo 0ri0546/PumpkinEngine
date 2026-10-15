@@ -6,6 +6,34 @@
 #include <Math/Vec.h>
 
 namespace Pumpkin {
+	enum class CullMode {
+		None,
+		Back,
+		Front
+	};
+
+	enum class CameraType {
+		Perspective,
+		Orthographic
+	};
+
+	enum class DepthTestMode {
+		None,
+		Less,
+		LessEqual,
+		Greater,
+		GreaterEqual,
+		Equal,
+		NotEqual
+	};
+
+	enum class BlendMode {
+		None,
+		Alpha,
+		Additive,
+		Multiply
+	};
+
     // 8-bit color depth
     struct alignas(4) Color {
         uint8_t r{ 0 };
@@ -16,7 +44,6 @@ namespace Pumpkin {
 
     struct FrameBuffer {
         uint32_t* pixels{ nullptr };
-        uint32_t clearColor{ 0x00000000u };
         uint16_t width{}, height{};
     };
 
