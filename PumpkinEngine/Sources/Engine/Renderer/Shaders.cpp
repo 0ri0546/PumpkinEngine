@@ -17,7 +17,7 @@ namespace Pumpkin {
 		Rasterizer& rasterizer,
         const FrameBuffer& fb,
         DepthBuffer& db,
-        const std::vector<Vertex>& vertices,
+        const std::vector<Vec4f>& vertices,
         const std::vector<std::uint32_t>& indices,
         const std::vector<Color>& colors
     ) {

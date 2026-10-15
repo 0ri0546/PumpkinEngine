@@ -40,20 +40,18 @@ namespace Pumpkin {
 		CameraType    Projection{ CameraType::Perspective };
 		
 		void RasterizeFrame(
-			std::span<const Vertex> v,
+			std::span<const Vec4f> v,
 			std::span<const uint32_t> indices,
 			std::span<const Color> colors,
 			const FrameBuffer& fb,
 			DepthBuffer& db
 		);
 
-	private:
-		void BuildDrawOrder(std::span<const Triangle> tris, std::vector<uint32_t>& order);
-        void BuildTriangle(std::span<const Vertex> v, std::span<const uint32_t> indices, std::span<const Color> colors, size_t tri, int width, int height, std::vector<Triangle>& dst);
-		void BuildTriangles(std::span<const Vertex> v, std::span<const uint32_t> indices, std::span<const Color> colors, int width, int height, std::vector<Triangle>& out);
-		void BinTriangles(std::span<const Triangle> triangles, std::span<const uint32_t> order, int tilesX, int tilesY, std::vector<std::vector<uint32_t>>& bins);
+    private:
+        void BuildTriangle(std::span<const Vec4f> v, std::span<const uint32_t> indices, std::span<const Color> colors, size_t tri, int width, int height, std::vector<Triangle>& dst) const;
+        void BuildTriangles(std::span<const Vec4f> v, std::span<const uint32_t> indices, std::span<const Color> colors, int width, int height, std::vector<std::vector<Triangle>>& chunks) const;
         void ClearTile(const Tile& tile, float* depth, uint32_t* pixels, uint32_t width) const;
         template<bool Transparent>
-        void DrawInTile(const Triangle& t, const Tile& tile, float* depth, uint32_t* pixels, uint32_t width);
+        void DrawInTile(const Triangle& t, const Tile& tile, float* depth, uint32_t* pixels, uint32_t width) const;
     };
 }
