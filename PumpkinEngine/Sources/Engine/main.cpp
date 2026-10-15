@@ -9,14 +9,17 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 
 #include <SDL3/SDL.h>
 
 #include <Renderer/Rasterizer.hpp>
 #include <Renderer/Shaders.hpp>
+#include <Renderer/Camera.hpp>
 #include <Renderer/Types.hpp>
 #include <Utils/ObjParser.hpp>
 #include <Utils/Utils.hpp>
+#include <Utils/Events/Events.hpp>
 
 using namespace Pumpkin;
 
@@ -49,8 +52,8 @@ namespace {
 
             // NDC: x,y in [-1, 1], z in [0, 1]
             const float ndcX = c.position[0] * invW;
-            const float ndcY = c.position[1] * invW;
-            const float ndcZ = c.position[2] * invW;
+            const float ndcY = c.position[1] * invW; 
+            const float ndcZ = c.position[2] * invW * 0.5f + 0.5f;
 
             out.emplace_back(
                 Vec4f{
@@ -149,7 +152,7 @@ namespace {
                     attribs.vertices[pos],
                     attribs.vertices[pos + 1] - kDefaultVertexW / 2.0f,
                     attribs.vertices[pos + 2],
-                    kDefaultVertexW
+                    1.0f
                 },
                 uv,
                 normal
@@ -162,7 +165,7 @@ namespace {
 
     // Pipeline: input -> clip -> screen -> pixel shader
     // (the pixel shader calls the rasterizer, then shades during rasterization)
-    void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
+    void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera) {
         {
             static const std::vector<Vertex> originalVertices = mesh.vertices;
             static constexpr float speed = 1.0f;
@@ -218,7 +221,12 @@ namespace {
             }
 
         }
-        const std::vector<Vertex> clip = VertexShader(mesh.vertices);
+
+        const std::vector<Vertex> clip = VertexShader(
+            mesh.vertices,
+            camera,
+            static_cast<float>(fb.width) / static_cast<float>(fb.height)
+        );
 
         std::vector<Vertex> screen;
         if (!ToScreen(clip, fb, screen)) {
@@ -266,7 +274,6 @@ namespace {
         db.height = height;
         db.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height), 1.0f);
     }
-
 } // namespace
 
 // ---------------------------------------------------------------------------
@@ -275,6 +282,10 @@ int main() {
     const auto fb = std::make_unique<FrameBuffer>();
     const auto db = std::make_unique<DepthBuffer>();
     uint64_t targetFps = kDefaultTargetFps;
+
+    Camera camera;
+
+    auto previousTime = std::chrono::steady_clock::now();
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::println("SDL could not initialize! SDL Error: {}", SDL_GetError());
@@ -331,11 +342,21 @@ int main() {
             default:
                 break;
             }
+
+            Pumpkin::handleCameraEvent(camera, event);
         }
+
+
+        auto currentTime = std::chrono::steady_clock::now();
+        std::chrono::duration<float> elapsedTime = currentTime - previousTime;
+        float deltaTime = elapsedTime.count();
+        previousTime = currentTime;
+
+        Pumpkin::updateCameraMovement(camera, deltaTime);
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
-        DrawMesh(teapot, *fb, *db);
+        DrawMesh(teapot, *fb, *db, camera);
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.

@@ -1,11 +1,16 @@
 #pragma once
 
+#include <vector>
 #include <Renderer/Types.hpp>
-
-#include <Math/Vec.h>
+#include <Renderer/Camera.hpp>
 
 namespace Pumpkin {
-    std::vector<Vertex> VertexShader(const std::vector<Vertex>& vertices);
+    std::vector<Vertex> VertexShader(
+        const std::vector<Vertex>& vertices,
+        const Camera& camera,
+        float aspectRatio
+    );
+
     void PixelShader(
         const FrameBuffer& fb,
         DepthBuffer& db,
