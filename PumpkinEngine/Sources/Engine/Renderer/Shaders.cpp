@@ -4,8 +4,8 @@
 
 namespace Pumpkin {
     // TODO(When 3D): Near clipping + projection + MVP
-    std::vector<Vec4f> VertexShader(const std::vector<Vec4f>& vertices) {
-        std::vector<Vec4f> clip{};
+    std::vector<Vertex> VertexShader(const std::vector<Vertex>& vertices) {
+        std::vector<Vertex> clip{};
         clip.reserve(vertices.size());
         for (const auto& v : vertices) {
             clip.push_back(v);
@@ -16,9 +16,10 @@ namespace Pumpkin {
     void PixelShader(
         const FrameBuffer& fb,
         DepthBuffer& db,
-        const std::vector<Vec4f>& vertices,
+        const std::vector<Vertex>& vertices,
+        const std::vector<std::uint32_t>& indices,
         const std::vector<Color>& colors
     ) {
-        RasterizeFrame(vertices, colors, fb, db);
+        RasterizeFrame(vertices, indices, colors, fb, db);
     }
 }

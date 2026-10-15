@@ -5,9 +5,12 @@
 #include <Math/Vec.h>
 
 namespace Pumpkin {
-    std::vector<Vec4f> VertexShader(const std::vector<Vec4f>& vertices);
+    std::vector<Vertex> VertexShader(const std::vector<Vertex>& vertices);
     void PixelShader(
-        const FrameBuffer& fb, DepthBuffer& db,
-        const std::vector<Vec4f>& vertices, const std::vector<Color>& colors
+        const FrameBuffer& fb,
+        DepthBuffer& db,
+        const std::vector<Vertex>& vertices,
+        const std::vector<std::uint32_t>& indices,
+        const std::vector<Color>& colors
     );
 }
