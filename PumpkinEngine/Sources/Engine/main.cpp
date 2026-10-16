@@ -20,6 +20,7 @@
 #include <Utils/ObjParser.hpp>
 #include <Utils/Utils.hpp>
 #include <Utils/Events/Events.hpp>
+#include <Renderer/Texture.hpp>
 
 using namespace Pumpkin;
 
@@ -74,7 +75,7 @@ namespace {
     // ---------------------------------------------------------------------------
 
     std::vector<Color> GenerateRGB(size_t count, int r, int g, int b) {
-        return std::vector<Color>(count, Color(r, g, b, 127));
+        return std::vector<Color>(count, Color(r, g, b, 255));
     }
 
     [[maybe_unused]] std::vector<Color> GenerateRNGRGB(size_t count) {
@@ -192,14 +193,14 @@ namespace {
             }
         }
 
-        mesh.colors = GenerateRGB(mesh.vertices.size(), 255, 142, 0);
+        mesh.colors = GenerateRGB(mesh.vertices.size(), 255, 255, 255);
         return mesh;
     }
 
     // Pipeline: input -> clip -> screen -> pixel shader
     // (the pixel shader calls the rasterizer, then shades during rasterization)
 
-    void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera) {
+    void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera, const Texture& texture) {
         static const std::vector<Vertex> originalVertices = mesh.vertices;
         static constexpr float speed = 1.0f;
 
@@ -233,7 +234,7 @@ namespace {
             return;
         }
 
-        PixelShader(fb, db, screen, mesh.indices, mesh.colors);
+        PixelShader(fb, db, screen, mesh.indices, mesh.colors, texture);
     }
 
 
@@ -315,7 +316,11 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh teapot = LoadMesh("Assets/pumpkin_.obj");
+    Mesh teapot = LoadMesh("Assets/VikingRoom.obj");
+    Texture texture;
+    if (!LoadTexture(texture, "Assets/Textures/VikingRoom.png")) {
+        std::println("Impossible de charger la texture.");
+    }
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
     auto nextFrame = std::chrono::steady_clock::now();
@@ -357,7 +362,7 @@ int main() {
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
-        DrawMesh(teapot, *fb, *db, camera);
+        DrawMesh(teapot, *fb, *db, camera, texture);
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.

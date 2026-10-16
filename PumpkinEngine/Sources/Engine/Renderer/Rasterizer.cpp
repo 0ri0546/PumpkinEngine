@@ -1,6 +1,7 @@
 #include "Rasterizer.hpp"
 
 #include <Renderer/Types.hpp>
+#include <Renderer/Texture.hpp>
 #include <Utils/Utils.hpp>
 #include <Utils/ThreadPool.hpp>
 
@@ -90,6 +91,7 @@ namespace Pumpkin {
             Plane z;             // depth
             Plane k;             // perspective term (the "w" divide)
             Plane r, g, b, a;    // color channels, already multiplied by k
+            Plane u, v;
         };
 
 
@@ -157,6 +159,10 @@ namespace Pumpkin {
             const Color& c1 = colors[ib];
             const Color& c2 = colors[ic];
 
+            const auto& uv0 = v[ia].texcoord;
+            const auto& uv1 = v[ib].texcoord;
+            const auto& uv2 = v[ic].texcoord;
+
             t.transparent = c0.a < 255 || c1.a < 255 || c2.a < 255;
             t.zKey = az + bz + cz;
 
@@ -169,6 +175,12 @@ namespace Pumpkin {
             t.g = Mix(t.w0, t.w1, t.w2, ak * c0.g, bk * c1.g, ck * c2.g);
             t.b = Mix(t.w0, t.w1, t.w2, ak * c0.b, bk * c1.b, ck * c2.b);
             t.a = Mix(t.w0, t.w1, t.w2, ak * c0.a, bk * c1.a, ck * c2.a);
+
+            t.u = Mix(t.w0, t.w1, t.w2,
+                ak * uv0[0], bk * uv1[0], ck * uv2[0]);
+
+            t.v = Mix(t.w0, t.w1, t.w2,
+                ak * uv0[1], bk * uv1[1], ck * uv2[1]);
 
             dst.push_back(t);
         }
@@ -294,8 +306,13 @@ namespace Pumpkin {
         };
 
         template <bool Transparent>
-        void DrawInTile(const Triangle& t, const Tile& tile,
-                        float* depth, u32* pixels, u32 width) {
+        void DrawInTile(
+            const Triangle& t,
+            const Tile& tile,
+            float* depth,
+            u32* pixels,
+            u32 width,
+            const Texture& texture) {
             // Part of the triangle that is inside this tile.
             const int xa = std::max(t.x0, tile.x0), xb = std::min(t.x1, tile.x1);
             const int ya = std::max(t.y0, tile.y0), yb = std::min(t.y1, tile.y1);
@@ -317,6 +334,8 @@ namespace Pumpkin {
                 float g = t.g.At(row, lo);
                 float b = t.b.At(row, lo);
                 float a = Transparent ? t.a.At(row, lo) : 0.0f;
+                float u = t.u.At(row, lo);
+                float v = t.v.At(row, lo);
 
                 float* depthRow = depth + static_cast<size_t>(y) * width;
                 u32* pixelRow = pixels + static_cast<size_t>(y) * width;
@@ -327,7 +346,25 @@ namespace Pumpkin {
                     // Non orthographic projection doesn't draw behind the camera
                     if (ortho ? z < depthRow[x] : z >= 0.0f && z < depthRow[x]) {
                         const float inv = 1.0f / k;
-                        const float sr = r * inv, sg = g * inv, sb = b * inv; // source color
+
+                        float sr = r * inv;
+                        float sg = g * inv;
+                        float sb = b * inv;
+                        float sa = a * inv;
+
+                        {
+                            const u32 texel = SampleTexture(texture, u * inv, v * inv);
+
+                            const float tr = static_cast<float>((texel >> 24) & 0xFF);
+                            const float tg = static_cast<float>((texel >> 16) & 0xFF);
+                            const float tb = static_cast<float>((texel >> 8) & 0xFF);
+                            const float ta = static_cast<float>(texel & 0xFF);
+
+                            sr *= tr / 255.0f;
+                            sg *= tg / 255.0f;
+                            sb *= tb / 255.0f;
+                            sa *= ta / 255.0f;
+                        }
 
                         if constexpr (!Transparent) {
                             depthRow[x] = z; // only opaque triangles write depth
@@ -350,6 +387,8 @@ namespace Pumpkin {
                     // Step to the next pixel.
                     z += t.z.dx; k += t.k.dx;
                     r += t.r.dx; g += t.g.dx; b += t.b.dx;
+                    u += t.u.dx;
+                    v += t.v.dx;
                     if constexpr (Transparent) a += t.a.dx;
                 }
             }
@@ -373,7 +412,8 @@ namespace Pumpkin {
         std::span<const u32> indices,
         std::span<const Color> colors,
         const FrameBuffer& fb,
-        DepthBuffer& db
+        DepthBuffer& db,
+        const Texture& texture
     ) {
         if (fb.width == 0 || fb.height == 0) return;
 
@@ -421,8 +461,12 @@ namespace Pumpkin {
 
                 for (const u32 triIndex : bins[index]) {
                     const Triangle& t = triangles[triIndex];
-                    if (t.transparent) DrawInTile<true>(t, tile, depth, fb.pixels, fb.width);
-                    else               DrawInTile<false>(t, tile, depth, fb.pixels, fb.width);
+                    if (t.transparent) {
+                        DrawInTile<true>(t, tile, depth, fb.pixels, fb.width, texture);
+                    }
+                    else {
+                        DrawInTile<false>(t, tile, depth, fb.pixels, fb.width, texture);
+                    }
                 }
             }
         };

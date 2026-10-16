@@ -3,6 +3,7 @@
 #include <vector>
 #include <Renderer/Types.hpp>
 #include <Renderer/Camera.hpp>
+#include <Renderer/Texture.hpp>
 
 namespace Pumpkin {
     std::vector<Vertex> VertexShader(
@@ -16,6 +17,7 @@ namespace Pumpkin {
         DepthBuffer& db,
         const std::vector<Vertex>& vertices,
         const std::vector<std::uint32_t>& indices,
-        const std::vector<Color>& colors
+        const std::vector<Color>& colors,
+        const Texture& texture
     );
 }
