@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
 #include <string>
 
 namespace Pumpkin {
@@ -14,6 +15,7 @@ namespace Pumpkin {
         Texture& texture,
         const std::filesystem::path& filepath
     ) {
+        auto start = std::chrono::steady_clock::now();
         int width = 0;
         int height = 0;
         int channels = 0;
@@ -57,6 +59,9 @@ namespace Pumpkin {
 
         stbi_image_free(image);
 
+        auto end = std::chrono::steady_clock::now();
+        std::cout << "Loaded texture: " << filepath.filename().string() << " in " << std::chrono::duration<float, std::milli>(end - start).count() << " ms" << std::endl;
+
         return true;
     }
 
@@ -71,11 +76,11 @@ namespace Pumpkin {
             return 0xFFFFFFFF;
         }
 
-        // Répétition de la texture
+        // Rï¿½pï¿½tition de la texture
         u -= std::floor(u);
         v -= std::floor(v);
 
-        // Conversion UV vers coordonnées pixel
+        // Conversion UV vers coordonnï¿½es pixel
         const int x = std::clamp(
             static_cast<int>(u * texture.width),
             0,

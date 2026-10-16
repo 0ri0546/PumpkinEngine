@@ -292,10 +292,10 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh teapot = LoadMesh("Assets/VikingRoom.obj");
+    Mesh teapot = LoadMesh("Assets/Spot.obj");
     Texture texture;
-    if (!LoadTexture(texture, "Assets/Textures/VikingRoom.png")) {
-        std::println("Impossible de charger la texture.");
+    if (!LoadTexture(texture, "Assets/Textures/SpotTexture.png")) {
+        std::println("Impossible to load texture.");
     }
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
