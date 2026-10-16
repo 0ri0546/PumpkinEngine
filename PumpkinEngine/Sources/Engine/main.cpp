@@ -27,7 +27,7 @@ namespace {
 
     constexpr uint64_t kDefaultTargetFps = 120;
     constexpr uint64_t kUncappedFps      = 9'999'999;
-    constexpr float    kDefaultVertexW   = 110.0f;
+    constexpr float    kDefaultVertexW   = 1000.0f;
     constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
     // ---------------------------------------------------------------------------
@@ -150,7 +150,7 @@ namespace {
             mesh.vertices.emplace_back(
                 Vec4f{
                     attribs.vertices[pos],
-                    attribs.vertices[pos + 1] - kDefaultVertexW / 2.0f,
+                    attribs.vertices[pos + 1],
                     attribs.vertices[pos + 2],
                     1.0f
                 },
@@ -159,67 +159,67 @@ namespace {
             );
         }
 
+        if (!mesh.vertices.empty()) {
+            Vec3f minBounds{
+                mesh.vertices[0].position[0],
+                mesh.vertices[0].position[1],
+                mesh.vertices[0].position[2]
+            };
+
+            Vec3f maxBounds = minBounds;
+
+            for (const auto& vertex : mesh.vertices) {
+                for (int axis = 0; axis < 3; ++axis) {
+                    minBounds[axis] = std::min(minBounds[axis], vertex.position[axis]);
+                    maxBounds[axis] = std::max(maxBounds[axis], vertex.position[axis]);
+                }
+            }
+
+            Vec3f center = (minBounds + maxBounds) * 0.5f;
+            Vec3f size = maxBounds - minBounds;
+
+            float maxSize = std::max({ size[0], size[1], size[2] });
+
+            if (maxSize > 0.0f) {
+                float scale = 2.0f / maxSize;
+
+                for (auto& vertex : mesh.vertices) {
+                    for (int axis = 0; axis < 3; ++axis) {
+                        vertex.position[axis] =
+                            (vertex.position[axis] - center[axis]) * scale;
+                    }
+                }
+            }
+        }
+
         mesh.colors = GenerateRGB(mesh.vertices.size(), 255, 142, 0);
         return mesh;
     }
 
     // Pipeline: input -> clip -> screen -> pixel shader
     // (the pixel shader calls the rasterizer, then shades during rasterization)
+
     void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera) {
-        {
-            static const std::vector<Vertex> originalVertices = mesh.vertices;
-            static constexpr float speed = 1.0f;
+        static const std::vector<Vertex> originalVertices = mesh.vertices;
+        static constexpr float speed = 1.0f;
 
-            const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
+        const auto t = std::chrono::duration<float>(
+            std::chrono::steady_clock::now().time_since_epoch()
+        ).count();
 
-            // Toggle
-            bool rotateX = false;
-            bool rotateY = true;
-            bool rotateZ = false;
+        const float angle = t * speed;
+        const float c = std::cos(angle);
+        const float s = std::sin(angle);
 
-            // Rotation center. Your cube spans z 0..1, so its center is z = 0.5.
-            constexpr float pivotX = 0.0f, pivotY = -1.0f, pivotZ = 0.5f;
-            constexpr float zScale = 0.5f / 0.8660254f;
+        for (size_t i = 0; i < mesh.vertices.size(); ++i) {
+            const float x = originalVertices[i].position[0];
+            const float y = originalVertices[i].position[1];
+            const float z = originalVertices[i].position[2];
 
-            const float angle = t * speed;
-
-            // Angle is 0 for a disabled axis, which makes that rotation a no-op.
-            const float angleX = rotateX ? angle : 0.0f;
-            const float angleY = rotateY ? angle : 0.0f;
-            const float angleZ = rotateZ ? angle : 0.0f;
-
-            const float cx = std::cos(angleX), sx = std::sin(angleX);
-            const float cy = std::cos(angleY), sy = std::sin(angleY);
-            const float cz = std::cos(angleZ), sz = std::sin(angleZ);
-
-            for (size_t i = 0; i < mesh.vertices.size(); ++i) {
-                // Move so the pivot is at the origin
-                const float x = originalVertices[i].position[0] - pivotX;
-                const float y = originalVertices[i].position[1] - pivotY;
-                const float z = originalVertices[i].position[2] - pivotZ;
-
-                // Rotate around X
-                const float x1 = x;
-                const float y1 = y * cx - z * sx;
-                const float z1 = y * sx + z * cx;
-
-                // Rotate around Y
-                const float x2 = x1 * cy + z1 * sy;
-                const float y2 = y1;
-                const float z2 = -x1 * sy + z1 * cy;
-
-                // Rotate around Z
-                const float x3 = x2 * cz - y2 * sz;
-                const float y3 = x2 * sz + y2 * cz;
-                const float z3 = z2;
-
-                // Move back
-                mesh.vertices[i].position[0] = x3 + pivotX;
-                mesh.vertices[i].position[1] = y3 + pivotY;
-                mesh.vertices[i].position[2] = z3 * zScale + pivotZ;
-                mesh.vertices[i].position[3] = originalVertices[i].position[3]; // keep w / k untouched
-            }
-
+            mesh.vertices[i].position[0] = x * c + z * s;
+            mesh.vertices[i].position[1] = y;
+            mesh.vertices[i].position[2] = -x * s + z * c;
+            mesh.vertices[i].position[3] = originalVertices[i].position[3];
         }
 
         const std::vector<Vertex> clip = VertexShader(
@@ -235,6 +235,7 @@ namespace {
 
         PixelShader(fb, db, screen, mesh.indices, mesh.colors);
     }
+
 
     // ---------------------------------------------------------------------------
     // Window / buffers

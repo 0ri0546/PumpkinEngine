@@ -26,19 +26,10 @@ namespace Pumpkin {
 
         const Mat4f viewProjection = projection * view;
 
-        
-
         for (const auto& v : vertices)
         {
             Vertex transformed = v;
             transformed.position = viewProjection * v.position;
-            /*if (clip.empty()) {
-                std::cout << "[DEBUG] First clip vertex: "
-                    << transformed.position[0] << ", "
-                    << transformed.position[1] << ", "
-                    << transformed.position[2] << ", "
-                    << transformed.position[3] << '\n';
-            }*/
             clip.push_back(transformed);
         }
 

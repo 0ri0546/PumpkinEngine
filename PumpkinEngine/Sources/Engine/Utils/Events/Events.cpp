@@ -14,20 +14,13 @@ namespace Pumpkin {
             if (event->button.button == SDL_BUTTON_MIDDLE)
                 std::println("mouse middle");
 
-            return true;
-        }
-
-        if (event->type == SDL_EVENT_MOUSE_MOTION) {
-            camera->rotate(
-                static_cast<float>(event->motion.xrel),
-                static_cast<float>(event->motion.yrel)
-            );
-
+            
             return true;
         }
 
         return false;
     }
+
 
     void updateCameraMovement(Camera& camera, float deltaTime) {
         const bool* state = SDL_GetKeyboardState(nullptr);
@@ -44,7 +37,8 @@ namespace Pumpkin {
     }
 
     void handleCameraEvent(Camera& camera, const SDL_Event& event) {
-        if (event.type == SDL_EVENT_MOUSE_MOTION) {
+        if (event.type == SDL_EVENT_MOUSE_MOTION &&
+            (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) {
             camera.rotate(
                 static_cast<float>(event.motion.xrel),
                 static_cast<float>(event.motion.yrel)
