@@ -113,7 +113,7 @@ namespace Pumpkin {
 
                     // Transparent: inverted key, so it ends up back to front
                     const std::size_t cls = t.transparent ? 1 : 0;
-                    const SortItem item{ t.transparent ? ~key : key, id };
+                    const SortItem item{ key, id };
                     ForEachTile(t, tilesX, [&](std::size_t tile) {
                         out[cursor[tile * 2 + cls]++] = item;
                     });
