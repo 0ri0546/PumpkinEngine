@@ -1,9 +1,6 @@
 #include "Shaders.hpp"
 
 #include <Renderer/Rasterizer.hpp>
-#include <Renderer/Texture.hpp>
-#include <numbers>
-#include <iostream>
 
 namespace Pumpkin {
 
@@ -36,16 +33,4 @@ namespace Pumpkin {
 
         return clip;
     }
-
-    void PixelShader(
-        const FrameBuffer& fb,
-        DepthBuffer& db,
-        const std::vector<Vertex>& vertices,
-        const std::vector<std::uint32_t>& indices,
-        const std::vector<Color>& colors,
-        const Texture& texture
-    ) {
-        RasterizeFrame(vertices, indices, colors, fb, db, texture);
-    }
-
 }

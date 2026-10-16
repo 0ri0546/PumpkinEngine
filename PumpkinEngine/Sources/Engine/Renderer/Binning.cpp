@@ -111,7 +111,6 @@ namespace Pumpkin {
                     const std::uint32_t id = (static_cast<std::uint32_t>(ci) << kChunkShift) | local;
                     const std::uint32_t key = SortableKey(t.zKey);
 
-                    // Transparent: inverted key, so it ends up back to front
                     const std::size_t cls = t.transparent ? 1 : 0;
                     const SortItem item{ key, id };
                     ForEachTile(t, tilesX, [&](std::size_t tile) {

@@ -21,7 +21,7 @@ namespace Pumpkin {
 
     // Culls one triangle. If it stays, appends its primitive to dst.
     static void AssembleTriangle(std::span<const Vec4f> v, std::span<const std::uint32_t> indices,
-        std::span<const Color> colors, std::size_t tri, const AssemblyDesc& desc,
+        std::span<const Color> colors, std::span<const Vec2f> tex, std::size_t tri, const AssemblyDesc& desc,
         std::vector<Primitive>& dst) {
         const std::size_t i = tri * 3 + 2;
         const std::uint32_t ia = indices[i - 2], ib = indices[i - 1], ic = indices[i];
@@ -54,6 +54,10 @@ namespace Pumpkin {
         p.x1 = static_cast<int>(fx1);
         p.y1 = static_cast<int>(fy1);
 
+        const auto& uv0 = tex[ia];
+        const auto& uv1 = tex[ib];
+        const auto& uv2 = tex[ic];
+
         // Center of the first pixel.
         const float sx = static_cast<float>(p.x0) + 0.5f;
         const float sy = static_cast<float>(p.y0) + 0.5f;
@@ -69,6 +73,9 @@ namespace Pumpkin {
         p.w0 = weightPlane(bx, by, cx, cy);
         p.w1 = weightPlane(cx, cy, ax, ay);
         p.w2 = weightPlane(ax, ay, bx, by);
+
+        p.u = Mix(p.w0, p.w1, p.w2, ak * uv0[0], bk * uv1[0], ck * uv2[0]);
+        p.v = Mix(p.w0, p.w1, p.w2, ak * uv0[1], bk * uv1[1], ck * uv2[1]);
 
         p.z = Mix(p.w0, p.w1, p.w2, az, bz, cz);
         p.k = Mix(p.w0, p.w1, p.w2, ak, bk, ck);
@@ -88,7 +95,7 @@ namespace Pumpkin {
     }
 
     void AssemblePrimitives(std::span<const Vec4f> screen, std::span<const std::uint32_t> indices,
-        std::span<const Color> colors, const AssemblyDesc& desc, PrimitiveBatch& out) {
+        std::span<const Color> colors, std::span<const Vec2f> tex, const AssemblyDesc& desc, PrimitiveBatch& out) {
         const auto start = StageTimer::Clock::now();
 
         const bool valid = indices.size() % 3 == 0
@@ -109,7 +116,7 @@ namespace Pumpkin {
             const std::size_t begin = c * kSetupChunk;
             const std::size_t end = std::min(begin + kSetupChunk, triCount);
             for (std::size_t t = begin; t < end; ++t)
-                AssembleTriangle(screen, indices, colors, t, desc, dst);
+                AssembleTriangle(screen, indices, colors, tex, t, desc, dst);
         });
 
         gTimer.buildMs += StageTimer::Ms(start, StageTimer::Clock::now());

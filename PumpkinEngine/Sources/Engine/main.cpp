@@ -9,7 +9,6 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include <iostream>
 
 #include <SDL3/SDL.h>
 
@@ -183,6 +182,12 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera&
         for (const auto& v : originalVertices) p.push_back(v.normal);
         return p;
     }();
+    static const std::vector<Vec2f> originalTex = [&] {
+        std::vector<Vec2f> p;
+        p.reserve(originalVertices.size());
+        for (const auto& v : originalVertices) p.push_back(v.texcoord);
+        return p;
+    }();
     static constexpr float speed = 1.0f;
 
     const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
@@ -216,16 +221,10 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera&
 
     // 2. Primitive assembly: indices -> culled triangles with their setup
     static PrimitiveBatch batch;
-    AssemblePrimitives(screen, mesh.indices, mesh.colors,
-        { .culling = CullMode::Back, .width = fb.width, .height = fb.height }, batch);
+    const static AssemblyDesc desc = { .culling = CullMode::Back, .width = fb.width, .height = fb.height };
+    AssemblePrimitives(screen, mesh.indices, mesh.colors, originalTex, desc, batch);
 
-    // 3. Rasterizer + 4. fragment shader (called once per visible pixel)
-    static const Rasterizer rasterizer{
-        .ClearColor = 0x00000000u,
-        .DepthTest = DepthTestMode::Less,
-        .AlphaBlend = BlendMode::Alpha,
-        .Projection = CameraType::Perspective
-    };
+    // Fragment shader (called once per visible pixel)
 	static LambertShader lambertShader{
 		.normals = std::span<const Vec3f>{ originalNormals },
 		.colors = std::span<const Color>{ mesh.colors },
@@ -234,7 +233,6 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera&
 		.ambient = 0.1f
 	};
     PixelShader(batch, fb, db, lambertShader, texture);
-    //rasterizer.Rasterize(batch, fb, db, lambertShader);//VertexColorShader{ .colors = mesh.colors });
 }
 
 // ---------------------------------------------------------------------------

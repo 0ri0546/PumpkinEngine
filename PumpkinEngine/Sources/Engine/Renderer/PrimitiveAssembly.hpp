@@ -19,6 +19,7 @@ namespace Pumpkin {
         Plane w0, w1, w2;          // screen-space barycentric weights, inside = all >= 0
         Plane z;                   // depth
         Plane k;                   // 1 / w, interpolated (for perspective-correct attributes)
+        Plane u, v;                // UV
         float kv[3];               // 1 / w of each vertex
         std::uint32_t i0, i1, i2;  // vertex indices, handed to the shader
         float zKey;                // depth sort key
@@ -52,5 +53,5 @@ namespace Pumpkin {
     /// `colors` is only used to tell opaque from transparent triangles; it can be empty (all opaque).
     /// If the input is invalid (indices not a multiple of 3, too few colors), the batch is left empty.
     void AssemblePrimitives(std::span<const Vec4f> screen, std::span<const std::uint32_t> indices,
-        std::span<const Color> colors, const AssemblyDesc& desc, PrimitiveBatch& out);
+        std::span<const Color> colors, std::span<const Vec2f> tex, const AssemblyDesc& desc, PrimitiveBatch& out);
 }

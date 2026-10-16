@@ -1,8 +1,5 @@
 #pragma once
 
-// Template part of the Rasterizer (the shader is a template parameter so it can be inlined).
-// Included at the end of Rasterizer.hpp.
-
 #include <Renderer/Binning.hpp>
 #include <Renderer/RasterizerDetail.hpp>
 #include <Utils/StageTimer.hpp>
@@ -22,11 +19,28 @@ namespace Pumpkin {
             static BinData bins;
             return bins;
         }
+
+        // 8 texels at once: wrap, UV -> pixel, clamp, gather. Returns 8 packed pixels in the texture's layout.
+        [[nodiscard]] inline __m256i SampleTexture8(const std::uint32_t* texels, int width, int height,
+            V::type u, V::type v) {
+            u = V::sub(u, _mm256_floor_ps(u));
+            v = V::sub(v, _mm256_floor_ps(v));
+
+            __m256i x = _mm256_cvttps_epi32(V::mul(u, V::set1(static_cast<float>(width))));
+            __m256i y = _mm256_cvttps_epi32(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))));
+
+            const __m256i zero = _mm256_setzero_si256();
+            x = _mm256_min_epi32(_mm256_max_epi32(x, zero), _mm256_set1_epi32(width - 1));
+            y = _mm256_min_epi32(_mm256_max_epi32(y, zero), _mm256_set1_epi32(height - 1));
+
+            const __m256i index = _mm256_add_epi32(_mm256_mullo_epi32(y, _mm256_set1_epi32(width)), x);
+            return _mm256_i32gather_epi32(reinterpret_cast<const int*>(texels), index, 4);
+        }
     }
 
     template <FragmentShader S>
     void Rasterizer::Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db,
-        const S& shader) const {
+        const S& shader, const Texture& texture) const {
         if (fb.width == 0 || fb.height == 0) return;
 
         using Clock = StageTimer::Clock;
@@ -68,8 +82,8 @@ namespace Pumpkin {
 
                 for (const SortItem* it = begin; it != end; ++it) {
                     const Primitive& p = batch[it->index];
-                    if (p.transparent) DrawInTile<true>(p, it->index, tile, depth, fb.pixels, fb.width, shader);
-                    else               DrawInTile<false>(p, it->index, tile, depth, fb.pixels, fb.width, shader);
+                    if (p.transparent) DrawInTile<true>(p, it->index, tile, depth, fb.pixels, fb.width, shader, texture);
+                    else               DrawInTile<false>(p, it->index, tile, depth, fb.pixels, fb.width, shader, texture);
                 }
             }
         };
@@ -84,7 +98,7 @@ namespace Pumpkin {
 
     template <bool Transparent, FragmentShader S>
     void Rasterizer::DrawInTile(const Primitive& t, std::uint32_t primitiveId, const Tile& tile,
-        float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader) const {
+        float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader, const Texture& texture) const {
         using namespace Detail;
 
         constexpr float nearPlane = 0.01f;
@@ -109,6 +123,7 @@ namespace Pumpkin {
         frag.i1 = t.i1;
         frag.i2 = t.i2;
         frag.primitiveId = primitiveId;
+        const bool hasTexture = texture.width > 0 && texture.height > 0 && !texture.pixels.empty();
 
         for (int y = ya; y < yb; ++y) {
             const auto row = static_cast<float>(y - t.y0);
@@ -134,13 +149,16 @@ namespace Pumpkin {
 
             // ---- SIMD part: 8 pixels per iteration ----
             if (x + kLanes <= end) {
-                const float l = static_cast<float>(x - t.x0);
+                const auto l = static_cast<float>(x - t.x0);
                 V::type vz = lanes(t.z, t.z.At(row, l));
                 V::type vk = lanes(t.k, t.k.At(row, l));
+                V::type vu = lanes(t.u, t.u.At(row, l));
+                V::type vv = lanes(t.v, t.v.At(row, l));
                 V::type vw0 = lanes(t.w0, t.w0.At(row, l));
                 V::type vw1 = lanes(t.w1, t.w1.At(row, l));
                 V::type vw2 = lanes(t.w2, t.w2.At(row, l));
                 const V::type sz = step(t.z), sk = step(t.k);
+                const V::type su = step(t.u), sv = step(t.v);
                 const V::type s0 = step(t.w0), s1 = step(t.w1), s2 = step(t.w2);
 
                 alignas(32) float b0[kLanes], b1[kLanes], b2[kLanes], zs[kLanes];
@@ -149,9 +167,10 @@ namespace Pumpkin {
                 for (; x + kLanes <= end; x += kLanes) {
                     const V::type oldDepth = V::load(depthRow + x);
                     const V::type mask = DepthMask(DepthTest, vz, oldDepth);
+                    const auto bits = V::movemask(mask);
 
                     // No lane passes: skip the division, the shader and the stores.
-                    if (V::movemask(mask) != 0) {
+                    if (bits != 0) {
                         // Perspective-correct weights: w_i * (1 / w_i) / (sum of them).
                         const V::type inv = V::div(one, vk);
                         V::store(b0, V::mul(V::mul(vw0, kv0), inv));
@@ -174,16 +193,25 @@ namespace Pumpkin {
                             outA[lane] = c.a;
                         }
 
-                        const V::type sr = V::load(outR);
-                        const V::type sg = V::load(outG);
-                        const V::type sb = V::load(outB);
+                        V::type sr = V::load(outR);
+                        V::type sg = V::load(outG);
+                        V::type sb = V::load(outB);
+                        V::type sa = V::load(outA);
+
+                        if (hasTexture) {
+                            const __m256i texel = SampleTexture8(texture.pixels.data(), texture.width, texture.height,
+                                V::mul(vu, inv), V::mul(vv, inv));
+                            sr = V::mul(sr, V::mul(Channel<24>(texel), inv255));
+                            sg = V::mul(sg, V::mul(Channel<16>(texel), inv255));
+                            sb = V::mul(sb, V::mul(Channel<8>(texel), inv255));
+                            sa = V::mul(sa, V::mul(Channel<0>(texel), inv255));
+                        }
 
                         if constexpr (!Transparent) {
                             V::store(depthRow + x, V::select(oldDepth, vz, mask)); // only opaque writes depth
                             StoreMasked(pixelRow + x, PackBGRA(sr, sg, sb, V::set1(255.0f)), mask);
                         }
                         else {
-                            const V::type sa = V::load(outA);
                             const __m256i old = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(pixelRow + x));
 
                             const V::type a = Clamp01(V::mul(sa, inv255));
@@ -202,6 +230,7 @@ namespace Pumpkin {
                     }
 
                     vz = V::add(vz, sz); vk = V::add(vk, sk);
+                    vu = V::add(vu, su); vv = V::add(vv, sv);
                     vw0 = V::add(vw0, s0); vw1 = V::add(vw1, s1); vw2 = V::add(vw2, s2);
                 }
             }
@@ -210,6 +239,8 @@ namespace Pumpkin {
             const auto tailLo = static_cast<float>(x - t.x0);
             float z = t.z.At(row, tailLo);
             float k = t.k.At(row, tailLo);
+            float u = t.u.At(row, tailLo);
+            float v = t.v.At(row, tailLo);
             float w0 = t.w0.At(row, tailLo);
             float w1 = t.w1.At(row, tailLo);
             float w2 = t.w2.At(row, tailLo);
@@ -224,26 +255,34 @@ namespace Pumpkin {
                     frag.b2 = w2 * t.kv[2] * inv;
                     const PixelOutput c = shader(frag);
 
-                    if constexpr (!Transparent) {
-                        depthRow[x] = z; // only opaque primitives write depth
-                        pixelRow[x] = PackColor(ToByte(c.r), ToByte(c.g), ToByte(c.b));
+                    float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
+                    if (hasTexture) {
+                        const std::uint32_t texel = SampleTexture(texture, u * inv, v * inv);
+                        sr *= static_cast<float>((texel >> 24) & 0xFF) / 255.0f;
+                        sg *= static_cast<float>((texel >> 16) & 0xFF) / 255.0f;
+                        sb *= static_cast<float>((texel >> 8) & 0xFF) / 255.0f;
+                        sa *= static_cast<float>(texel & 0xFF) / 255.0f;
                     }
-                    else {
-                        const std::uint32_t pixel = pixelRow[x];
-                        const float a = std::clamp(c.a / 255.0f, 0.0f, 1.0f);
 
+                    if constexpr (!Transparent) {
+                        depthRow[x] = z;
+                        pixelRow[x] = PackColor(ToByte(sr), ToByte(sg), ToByte(sb));
+                    } else {
+                        const std::uint32_t pixel = pixelRow[x];
+                        const float a = std::clamp(sa / 255.0f, 0.0f, 1.0f);
                         const auto dr = static_cast<float>((pixel >> 16) & 0xFF);
                         const auto dg = static_cast<float>((pixel >> 8) & 0xFF);
-                        const auto db = static_cast<float>(pixel & 0xFF);
+                        const auto dB = static_cast<float>(pixel & 0xFF);
                         pixelRow[x] = PackColor(
-                            ToByte(Blend(AlphaBlend, dr, c.r, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, dg, c.g, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, db, c.b, a) + 0.5f));
+                            ToByte(Blend(AlphaBlend, dr, sr, a) + 0.5f),
+                            ToByte(Blend(AlphaBlend, dg, sg, a) + 0.5f),
+                            ToByte(Blend(AlphaBlend, dB, sb, a) + 0.5f));
                     }
                 }
 
                 // Step to the next pixel.
                 z += t.z.dx; k += t.k.dx;
+                u += t.u.dx; v += t.v.dx;
                 w0 += t.w0.dx; w1 += t.w1.dx; w2 += t.w2.dx;
             }
         }

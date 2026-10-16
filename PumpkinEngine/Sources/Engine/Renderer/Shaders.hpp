@@ -4,6 +4,9 @@
 #include <Renderer/Types.hpp>
 #include <Renderer/Camera.hpp>
 #include <Renderer/Texture.hpp>
+#include <Renderer/PrimitiveAssembly.hpp>
+#include <Renderer/Fragment.hpp>
+#include <Renderer/Rasterizer.hpp>
 
 namespace Pumpkin {
     std::vector<Vertex> VertexShader(
@@ -12,12 +15,20 @@ namespace Pumpkin {
         float aspectRatio
     );
 
+    template <FragmentShader Shader>
     void PixelShader(
+        PrimitiveBatch& batch,
         const FrameBuffer& fb,
         DepthBuffer& db,
-        const std::vector<Vertex>& vertices,
-        const std::vector<std::uint32_t>& indices,
-        const std::vector<Color>& colors,
+        Shader& shader,
         const Texture& texture
-    );
+    ) {
+        static constexpr Rasterizer rasterizer{
+            .ClearColor = 0x00000000u,
+            .DepthTest = DepthTestMode::Less,
+            .AlphaBlend = BlendMode::Alpha,
+            .Projection = CameraType::Orthographic
+        };
+        rasterizer.Rasterize(batch, fb, db, shader, texture);
+    }
 }
