@@ -27,4 +27,19 @@ namespace Pumpkin {
         bool m_stop = false;
         std::vector<std::jthread> m_threads; // last member: joined first
     };
+
+    [[nodiscard]] ThreadPool& GetPool();
+
+    template <class Pool, class Fn>
+    void ParallelFor(Pool&& pool, size_t count, Fn&& fn) {
+        std::atomic<size_t> next{ 0 };
+        const std::function<void()> worker = [&] {
+            for (;;) {
+                const size_t i = next.fetch_add(1, std::memory_order_relaxed);
+                if (i >= count) return;
+                fn(i);
+            }
+        };
+        pool.Run(worker);
+    }
 }

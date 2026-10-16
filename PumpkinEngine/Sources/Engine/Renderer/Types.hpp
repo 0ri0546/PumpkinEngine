@@ -6,6 +6,50 @@
 #include <Math/Vec.h>
 
 namespace Pumpkin {
+    // Plane: a value that changes in a straight line across the screen.
+    struct Plane {
+        float start; // value at the first pixel
+        float dx;    // change per pixel to the right
+        float dy;    // change per pixel down
+
+        // Value `row` pixels down and `col` pixels right of the start.
+        [[nodiscard]] float At(float row, float col = 0.0f) const {
+            return start + dy * row + dx * col;
+        }
+    };
+
+    struct Tile {
+        int x0, y0, x1, y1;
+    };
+
+	enum class CullMode {
+		None,
+		Back,
+		Front
+	};
+
+	enum class CameraType {
+		Perspective,
+		Orthographic
+	};
+
+	enum class DepthTestMode {
+		None,
+		Less,
+		LessEqual,
+		Greater,
+		GreaterEqual,
+		Equal,
+		NotEqual
+	};
+
+	enum class BlendMode {
+		None,
+		Alpha,
+		Additive,
+		Multiply
+	};
+
     // 8-bit color depth
     struct alignas(4) Color {
         uint8_t r{ 0 };
@@ -16,7 +60,6 @@ namespace Pumpkin {
 
     struct FrameBuffer {
         uint32_t* pixels{ nullptr };
-        uint32_t clearColor{ 0x00000000u };
         uint16_t width{}, height{};
     };
 

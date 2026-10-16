@@ -37,4 +37,12 @@ namespace Pumpkin {
             m_sync.arrive_and_wait(); // report done
         }
     }
+
+    [[nodiscard]] ThreadPool& GetPool() {
+        // Max threads - 2, counting the calling thread.
+        static const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
+        static const unsigned total = hw > 2 ? hw - 2 : 1;
+        static ThreadPool pool(total - 1);
+        return pool;
+    }
 }

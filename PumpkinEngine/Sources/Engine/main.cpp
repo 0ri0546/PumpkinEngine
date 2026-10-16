@@ -9,157 +9,127 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
-#include <iostream>
 
 #include <SDL3/SDL.h>
 
+#include <Math/Mat.h>
+
+#include <Renderer/Fragment.hpp>
+#include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Rasterizer.hpp>
 #include <Renderer/Shaders.hpp>
 #include <Renderer/Camera.hpp>
+#include <Renderer/Transform.hpp>
 #include <Renderer/Types.hpp>
 #include <Utils/ObjParser.hpp>
 #include <Utils/Utils.hpp>
 #include <Utils/Events/Events.hpp>
 #include <Renderer/Texture.hpp>
 
+
 using namespace Pumpkin;
 
-namespace {
+constexpr uint64_t kDefaultTargetFps = 120;
+constexpr uint64_t kUncappedFps      = 9'999'999;
+constexpr float    kDefaultVertexW   = 2.0f;
+constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
-    constexpr uint64_t kDefaultTargetFps = 120;
-    constexpr uint64_t kUncappedFps      = 9'999'999;
-    constexpr float    kDefaultVertexW   = 1000.0f;
-    constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
+// ---------------------------------------------------------------------------
+// Mesh loading / drawing
+// ---------------------------------------------------------------------------
 
-    // ---------------------------------------------------------------------------
-    // Geometry helpers
-    // ---------------------------------------------------------------------------
+static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = true) {
+    if (filepath.extension().string() != ".obj") return Mesh{};
 
-    // Clip space -> screen space (perspective divide + viewport transform).
-    // Returns false if any vertex is behind the camera (no real clipping yet).
-    bool ToScreen(const std::vector<Vertex>& clip, const FrameBuffer& fb, std::vector<Vertex>& out) {
-        out.clear();
-        out.reserve(clip.size());
+    // triangle test
+	static constexpr bool triangleTest = false;
+	if constexpr (triangleTest) {
+		Mesh mesh{};
+		mesh.vertices = {
+			{
+				{ 0.0f, 1.0f, 0.5f, 1.0f },
+				{},
+				{}
+			},
+			{
+				{ -1.0f, -1.0f, 0.5f, 1.0f },
+				{},
+				{}
+			},
+			{
+				{ 1.0f, -1.0f, 0.5f, 1.0f },
+				{},
+				{}
+			}
+		};
+		mesh.colors = { {255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255} };
+		mesh.indices = { 0, 1, 2 };
+		return mesh;
+	}
 
-        const auto width  = static_cast<float>(fb.width);
-        const auto height = static_cast<float>(fb.height);
+    const auto [attribs, objIndices] = LoadObj(filepath);
 
-        for (const auto& c : clip) {
-            const float w = c.position[3];
-            if (w <= 0.0f) {
-                return false; // behind the camera, reject until real clipping exists
-            }
-            const float invW = 1.0f / w;
+    Mesh mesh;
+    mesh.vertices.reserve(objIndices.size());
+    mesh.indices.reserve(objIndices.size());
 
-            // NDC: x,y in [-1, 1], z in [0, 1]
-            const float ndcX = c.position[0] * invW;
-            const float ndcY = c.position[1] * invW; 
-            const float ndcZ = c.position[2] * invW * 0.5f + 0.5f;
+    std::unordered_map<IndexKey, uint32_t> seen;
+    if (deduplicate) seen.reserve(objIndices.size());
 
-            out.emplace_back(
-                Vec4f{
-                    (ndcX * 0.5f + 0.5f) * width,
-                    (0.5f - ndcY * 0.5f) * height, // Y flip: NDC is up, pixels are down
-                    ndcZ,
-                    invW
-                },
-                c.texcoord,
-                c.normal
-            );
+    for (const auto& idx : objIndices) {
+        const size_t pos = static_cast<size_t>(idx.vertex_index) * 3;
+        if (pos + 2 >= attribs.vertices.size()) {
+            continue;
         }
-        return true;
-    }
 
-    // ---------------------------------------------------------------------------
-    // Color helpers
-    // ---------------------------------------------------------------------------
+        const auto vertexIndex = static_cast<uint32_t>(mesh.vertices.size());
 
-    std::vector<Color> GenerateRGB(size_t count, int r, int g, int b) {
-        return std::vector<Color>(count, Color(r, g, b, 255));
-    }
+        if (deduplicate) {
+            const IndexKey key{
+                idx.vertex_index,
+                idx.texcoord_index,
+                idx.normal_index
+            };
 
-    [[maybe_unused]] std::vector<Color> GenerateRNGRGB(size_t count) {
-        static std::random_device dev{};
-        static std::mt19937 rng{ dev() };
-        static std::uniform_int_distribution<int> dist(0, 256);
-
-        std::vector<Color> colors;
-        colors.reserve(count);
-        for (size_t i = 0; i < count; ++i) {
-            colors.emplace_back(dist(rng), dist(rng), dist(rng), 127);
-        }
-        return colors;
-    }
-
-    // ---------------------------------------------------------------------------
-    // Mesh loading / drawing
-    // ---------------------------------------------------------------------------
-
-    Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = true) {
-        if (filepath.extension().string() != ".obj") return Mesh{};
-
-        const auto [attribs, objIndices] = LoadObj(filepath);
-
-        Mesh mesh;
-        mesh.vertices.reserve(objIndices.size());
-        mesh.indices.reserve(objIndices.size());
-
-        std::unordered_map<IndexKey, uint32_t> seen;
-        if (deduplicate) seen.reserve(objIndices.size());
-
-        for (const auto& idx : objIndices) {
-            const size_t pos = static_cast<size_t>(idx.vertex_index) * 3;
-            if (pos + 2 >= attribs.vertices.size()) {
+            // Duplicate: reuse the old vertex, add no new one
+            if (const auto it = seen.find(key); it != seen.end()) {
+                mesh.indices.push_back(it->second);
                 continue;
             }
-
-            const auto vertexIndex = static_cast<uint32_t>(mesh.vertices.size());
-
-            if (deduplicate) {
-                const IndexKey key{
-                    idx.vertex_index,
-                    idx.texcoord_index,
-                    idx.normal_index
-                };
-
-                // Duplicate: reuse the old vertex, add no new one
-                if (const auto it = seen.find(key); it != seen.end()) {
-                    mesh.indices.push_back(it->second);
-                    continue;
-                }
-                seen.emplace(key, vertexIndex);
-            }
-
-            Vec2f uv{};
-            if (idx.texcoord_index != kInvalidIndex) {
-                const size_t i = static_cast<size_t>(idx.texcoord_index) * 2;
-                if (i + 1 < attribs.texcoords.size()) {
-                    uv = { attribs.texcoords[i], attribs.texcoords[i + 1] };
-                }
-            }
-
-            Vec3f normal{};
-            if (idx.normal_index != kInvalidIndex) {
-                const size_t i = static_cast<size_t>(idx.normal_index) * 3;
-                if (i + 2 < attribs.normals.size()) {
-                    normal = { attribs.normals[i], attribs.normals[i + 1], attribs.normals[i + 2] };
-                }
-            }
-
-            // New vertex: its index is its position in mesh.vertices
-            mesh.indices.push_back(vertexIndex);
-            mesh.vertices.emplace_back(
-                Vec4f{
-                    attribs.vertices[pos],
-                    attribs.vertices[pos + 1],
-                    attribs.vertices[pos + 2],
-                    1.0f
-                },
-                uv,
-                normal
-            );
+            seen.emplace(key, vertexIndex);
         }
 
+        Vec2f uv{};
+        if (idx.texcoord_index != kInvalidIndex) {
+            const size_t i = static_cast<size_t>(idx.texcoord_index) * 2;
+            if (i + 1 < attribs.texcoords.size()) {
+                uv = { attribs.texcoords[i], attribs.texcoords[i + 1] };
+            }
+        }
+
+        Vec3f normal{};
+        if (idx.normal_index != kInvalidIndex) {
+            const size_t i = static_cast<size_t>(idx.normal_index) * 3;
+            if (i + 2 < attribs.normals.size()) {
+                normal = { attribs.normals[i], attribs.normals[i + 1], attribs.normals[i + 2] };
+            }
+        }
+
+        // New vertex: its index is its position in mesh.vertices
+        mesh.indices.push_back(vertexIndex);
+        mesh.vertices.emplace_back(
+            Vec4f{
+                attribs.vertices[pos],
+                attribs.vertices[pos + 1] - kDefaultVertexW / 2.0f,
+                attribs.vertices[pos + 2],
+                kDefaultVertexW
+            },
+            uv,
+            normal
+        );
+    }
+
+    mesh.colors = GenerateRGBA(mesh.vertices.size(), 127, 127, 127, 127);
         if (!mesh.vertices.empty()) {
             Vec3f minBounds{
                 mesh.vertices[0].position[0],
@@ -193,90 +163,116 @@ namespace {
             }
         }
 
-        mesh.colors = GenerateRGB(mesh.vertices.size(), 255, 255, 255);
+        mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 127);
         return mesh;
     }
 
-    // Pipeline: input -> clip -> screen -> pixel shader
-    // (the pixel shader calls the rasterizer, then shades during rasterization)
+// Pipeline: vertex stage -> primitive assembly -> rasterizer -> fragment shader
+static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera, const Texture& texture) {
+    static const std::vector<Vertex> originalVertices = mesh.vertices;
+    static const std::vector<Vec4f> originalPositions = [&] {
+        std::vector<Vec4f> p;
+        p.reserve(originalVertices.size());
+        for (const auto& v : originalVertices) p.push_back(v.position);
+        return p;
+    }();
+    static const std::vector<Vec3f> originalNormals = [&] {
+        std::vector<Vec3f> p;
+        p.reserve(originalVertices.size());
+        for (const auto& v : originalVertices) p.push_back(v.normal);
+        return p;
+    }();
+    static const std::vector<Vec2f> originalTex = [&] {
+        std::vector<Vec2f> p;
+        p.reserve(originalVertices.size());
+        for (const auto& v : originalVertices) p.push_back(v.texcoord);
+        return p;
+    }();
+    static constexpr float speed = 1.0f;
 
-    void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera, const Texture& texture) {
-        static const std::vector<Vertex> originalVertices = mesh.vertices;
-        static constexpr float speed = 1.0f;
+    const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
 
-        const auto t = std::chrono::duration<float>(
-            std::chrono::steady_clock::now().time_since_epoch()
-        ).count();
+    // Toggle
+    bool rotateX = false;
+    bool rotateY = true;
+    bool rotateZ = false;
 
-        const float angle = t * speed;
-        const float c = std::cos(angle);
-        const float s = std::sin(angle);
+    // Rotation center. Your cube spans z 0..1, so its center is z = 0.5.
+    constexpr float pivotX = 0.0f, pivotY = -1.0f, pivotZ = 0.5f;
+    constexpr float zScale = 0.5f / 0.8660254f;
 
-        for (size_t i = 0; i < mesh.vertices.size(); ++i) {
-            const float x = originalVertices[i].position[0];
-            const float y = originalVertices[i].position[1];
-            const float z = originalVertices[i].position[2];
+    const float angle = t * speed;
+    // Angle is 0 for a disabled axis, which makes that rotation a no-op.
+    const float angleX = rotateX ? angle : 0.0f;
+    const float angleY = rotateY ? angle : 0.0f;
+    const float angleZ = rotateZ ? angle : 0.0f;
 
-            mesh.vertices[i].position[0] = x * c + z * s;
-            mesh.vertices[i].position[1] = y;
-            mesh.vertices[i].position[2] = -x * s + z * c;
-            mesh.vertices[i].position[3] = originalVertices[i].position[3];
-        }
+    const Mat3x4 M = BuildTransform(angleX, angleY, angleZ, pivotX, pivotY, pivotZ, zScale);
 
-        const std::vector<Vertex> clip = VertexShader(
-            mesh.vertices,
-            camera,
-            static_cast<float>(fb.width) / static_cast<float>(fb.height)
-        );
+    // 1. Vertex stage: model -> screen space
+    static std::vector<Vec4f> screen;
+    if (!TransformToScreen(originalPositions, screen, M, fb.width, fb.height)) return;
 
-        std::vector<Vertex> screen;
-        if (!ToScreen(clip, fb, screen)) {
-            return;
-        }
+    const std::vector<Vertex> clip = VertexShader(
+        mesh.vertices,
+        camera,
+        static_cast<float>(fb.width) / static_cast<float>(fb.height)
+    );
 
-        PixelShader(fb, db, screen, mesh.indices, mesh.colors, texture);
-    }
+    // 2. Primitive assembly: indices -> culled triangles with their setup
+    static PrimitiveBatch batch;
+    const static AssemblyDesc desc = { .culling = CullMode::Back, .width = fb.width, .height = fb.height };
+    AssemblePrimitives(screen, mesh.indices, mesh.colors, originalTex, desc, batch);
 
+    // Fragment shader (called once per visible pixel)
+	static LambertShader lambertShader{
+		.normals = std::span<const Vec3f>{ originalNormals },
+		.colors = std::span<const Color>{ mesh.colors },
+		.lightDir = { 0.0f, 0.0f, 1.0f },
+		.lightCol = { 1.0f, 1.0f, 1.0f },
+		.ambient = 0.1f
+	};
+    PixelShader(batch, fb, db, lambertShader, texture);
+}
 
-    // ---------------------------------------------------------------------------
-    // Window / buffers
-    // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Window / buffers
+// ---------------------------------------------------------------------------
 
-    void SetMultiResWindowIcon(SDL_Window* window) {
-        SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Pumpkin@32.png");
-        SDL_Surface* icon16   = SDL_LoadPNG("Assets/Pumpkin@16.png");
-        SDL_Surface* icon64   = SDL_LoadPNG("Assets/Pumpkin@64.png");
+static void SetMultiResWindowIcon(SDL_Window* window) {
+    SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Pumpkin@32.png");
+    SDL_Surface* icon16   = SDL_LoadPNG("Assets/Pumpkin@16.png");
+    SDL_Surface* icon64   = SDL_LoadPNG("Assets/Pumpkin@64.png");
 
-        if (!baseIcon || !icon16 || !icon64) {
-            SDL_Log("Couldn't load icons : %s", SDL_GetError());
-            // SDL_DestroySurface(nullptr) is a safe no-op; release whatever did load.
-            SDL_DestroySurface(baseIcon);
-            SDL_DestroySurface(icon16);
-            SDL_DestroySurface(icon64);
-            return;
-        }
-
-        // The alternate images are ref-counted by SDL, so our handles can go right away.
-        SDL_AddSurfaceAlternateImage(baseIcon, icon16);
-        SDL_DestroySurface(icon16);
-        SDL_AddSurfaceAlternateImage(baseIcon, icon64);
-        SDL_DestroySurface(icon64);
-
-        if (!SDL_SetWindowIcon(window, baseIcon)) {
-            SDL_Log("Error while setting the window icon : %s", SDL_GetError());
-        }
-
+    if (!baseIcon || !icon16 || !icon64) {
+        SDL_Log("Couldn't load icons : %s", SDL_GetError());
+        // SDL_DestroySurface(nullptr) is a safe no-op; release whatever did load.
         SDL_DestroySurface(baseIcon);
+        SDL_DestroySurface(icon16);
+        SDL_DestroySurface(icon64);
+        return;
     }
 
-    void ResizeBuffers(FrameBuffer& fb, DepthBuffer& db, int width, int height) {
-        fb.width  = width;
-        fb.height = height;
-        db.width  = width;
-        db.height = height;
-        db.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height), 1.0f);
+    // The alternate images are ref-counted by SDL, so our handles can go right away.
+    SDL_AddSurfaceAlternateImage(baseIcon, icon16);
+    SDL_DestroySurface(icon16);
+    SDL_AddSurfaceAlternateImage(baseIcon, icon64);
+    SDL_DestroySurface(icon64);
+
+    if (!SDL_SetWindowIcon(window, baseIcon)) {
+        SDL_Log("Error while setting the window icon : %s", SDL_GetError());
     }
-} // namespace
+
+    SDL_DestroySurface(baseIcon);
+}
+
+static void ResizeBuffers(FrameBuffer& fb, DepthBuffer& db, int width, int height) {
+    fb.width  = width;
+    fb.height = height;
+    db.width  = width;
+    db.height = height;
+    db.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height), 1.0f);
+}
 
 // ---------------------------------------------------------------------------
 
@@ -304,7 +300,7 @@ int main() {
         SDL_free(ids);
     }
 
-    constexpr SDL_WindowFlags flags = 0 | SDL_WINDOW_TRANSPARENT | 0;
+    constexpr SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
     SDL_Window* window = SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, flags);
     if (!window) {
         std::println("Could not create window! SDL Error: {}", SDL_GetError());
@@ -342,6 +338,7 @@ int main() {
             case SDL_EVENT_WINDOW_RESIZED:
                 SDL_UpdateWindowSurface(window);
                 surface = SDL_GetWindowSurface(window);
+                surface->format = SDL_PIXELFORMAT_RGBA32;
                 ResizeBuffers(*fb, *db, event.window.data1, event.window.data2);
                 break;
 
