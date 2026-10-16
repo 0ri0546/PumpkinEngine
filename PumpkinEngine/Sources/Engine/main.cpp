@@ -129,43 +129,42 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
         );
     }
 
-    mesh.colors = GenerateRGBA(mesh.vertices.size(), 127, 127, 127, 127);
-        if (!mesh.vertices.empty()) {
-            Vec3f minBounds{
-                mesh.vertices[0].position[0],
-                mesh.vertices[0].position[1],
-                mesh.vertices[0].position[2]
-            };
+    if (!mesh.vertices.empty()) {
+        Vec3f minBounds{
+            mesh.vertices[0].position[0],
+            mesh.vertices[0].position[1],
+            mesh.vertices[0].position[2]
+        };
 
-            Vec3f maxBounds = minBounds;
+        Vec3f maxBounds = minBounds;
 
-            for (const auto& vertex : mesh.vertices) {
-                for (int axis = 0; axis < 3; ++axis) {
-                    minBounds[axis] = std::min(minBounds[axis], vertex.position[axis]);
-                    maxBounds[axis] = std::max(maxBounds[axis], vertex.position[axis]);
-                }
-            }
-
-            Vec3f center = (minBounds + maxBounds) * 0.5f;
-            Vec3f size = maxBounds - minBounds;
-
-            float maxSize = std::max({ size[0], size[1], size[2] });
-
-            if (maxSize > 0.0f) {
-                float scale = 2.0f / maxSize;
-
-                for (auto& vertex : mesh.vertices) {
-                    for (int axis = 0; axis < 3; ++axis) {
-                        vertex.position[axis] =
-                            (vertex.position[axis] - center[axis]) * scale;
-                    }
-                }
+        for (const auto& vertex : mesh.vertices) {
+            for (int axis = 0; axis < 3; ++axis) {
+                minBounds[axis] = std::min(minBounds[axis], vertex.position[axis]);
+                maxBounds[axis] = std::max(maxBounds[axis], vertex.position[axis]);
             }
         }
 
-        mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 127);
-        return mesh;
+        Vec3f center = (minBounds + maxBounds) * 0.5f;
+        Vec3f size = maxBounds - minBounds;
+
+        float maxSize = std::max({ size[0], size[1], size[2] });
+
+        if (maxSize > 0.0f) {
+            float scale = 2.0f / maxSize;
+
+            for (auto& vertex : mesh.vertices) {
+                for (int axis = 0; axis < 3; ++axis) {
+                    vertex.position[axis] =
+                        (vertex.position[axis] - center[axis]) * scale;
+                }
+            }
+        }
     }
+
+    mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 255);
+    return mesh;
+}
 
 // Pipeline: vertex stage -> primitive assembly -> rasterizer -> fragment shader
 static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera, const Texture& texture) {
@@ -188,41 +187,22 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera&
         for (const auto& v : originalVertices) p.push_back(v.texcoord);
         return p;
     }();
-    static constexpr float speed = 1.0f;
-
-    const auto t = std::chrono::duration<float>(std::chrono::steady_clock::now().time_since_epoch()).count();
-
-    // Toggle
-    bool rotateX = false;
-    bool rotateY = true;
-    bool rotateZ = false;
-
-    // Rotation center. Your cube spans z 0..1, so its center is z = 0.5.
-    constexpr float pivotX = 0.0f, pivotY = -1.0f, pivotZ = 0.5f;
-    constexpr float zScale = 0.5f / 0.8660254f;
-
-    const float angle = t * speed;
-    // Angle is 0 for a disabled axis, which makes that rotation a no-op.
-    const float angleX = rotateX ? angle : 0.0f;
-    const float angleY = rotateY ? angle : 0.0f;
-    const float angleZ = rotateZ ? angle : 0.0f;
-
-    const Mat3x4 M = BuildTransform(angleX, angleY, angleZ, pivotX, pivotY, pivotZ, zScale);
 
     // 1. Vertex stage: model -> screen space
-    static std::vector<Vec4f> screen;
-    if (!TransformToScreen(originalPositions, screen, M, fb.width, fb.height)) return;
-
     const std::vector<Vertex> clip = VertexShader(
-        mesh.vertices,
-        camera,
-        static_cast<float>(fb.width) / static_cast<float>(fb.height)
-    );
+    mesh.vertices, camera,
+    static_cast<float>(fb.width) / static_cast<float>(fb.height));
+
+    static std::vector<Vertex> screen; // reused across frames, no realloc
+    if (!ToScreen(clip, screen, fb.width, fb.height)) {
+        // behind the camera, reject until real clipping exists
+        screen.clear();
+    }
 
     // 2. Primitive assembly: indices -> culled triangles with their setup
     static PrimitiveBatch batch;
     const static AssemblyDesc desc = { .culling = CullMode::Back, .width = fb.width, .height = fb.height };
-    AssemblePrimitives(screen, mesh.indices, mesh.colors, originalTex, desc, batch);
+    AssemblePrimitives(screen, mesh.indices, mesh.colors, desc, batch);
 
     // Fragment shader (called once per visible pixel)
 	static LambertShader lambertShader{

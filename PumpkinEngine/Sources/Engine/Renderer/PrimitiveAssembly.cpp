@@ -20,8 +20,8 @@ namespace Pumpkin {
     }
 
     // Culls one triangle. If it stays, appends its primitive to dst.
-    static void AssembleTriangle(std::span<const Vec4f> v, std::span<const std::uint32_t> indices,
-        std::span<const Color> colors, std::span<const Vec2f> tex, std::size_t tri, const AssemblyDesc& desc,
+    static void AssembleTriangle(std::span<const Vertex> v, std::span<const std::uint32_t> indices,
+        std::span<const Color> colors, std::size_t tri, const AssemblyDesc& desc,
         std::vector<Primitive>& dst) {
         const std::size_t i = tri * 3 + 2;
         const std::uint32_t ia = indices[i - 2], ib = indices[i - 1], ic = indices[i];
@@ -30,9 +30,9 @@ namespace Pumpkin {
         const auto& pb = v[ib];
         const auto& pc = v[ic];
 
-        const float ax = pa[0], ay = pa[1], az = pa[2], ak = pa[3];
-        const float bx = pb[0], by = pb[1], bz = pb[2], bk = pb[3];
-        const float cx = pc[0], cy = pc[1], cz = pc[2], ck = pc[3];
+        const float ax = pa.position[0], ay = pa.position[1], az = pa.position[2], ak = pa.position[3];
+        const float bx = pb.position[0], by = pb.position[1], bz = pb.position[2], bk = pb.position[3];
+        const float cx = pc.position[0], cy = pc.position[1], cz = pc.position[2], ck = pc.position[3];
 
         // Twice the signed area. Zero means a flat triangle.
         const float area = (cx - ax) * (by - ay) - (cy - ay) * (bx - ax);
@@ -54,9 +54,9 @@ namespace Pumpkin {
         p.x1 = static_cast<int>(fx1);
         p.y1 = static_cast<int>(fy1);
 
-        const auto& uv0 = tex[ia];
-        const auto& uv1 = tex[ib];
-        const auto& uv2 = tex[ic];
+        const auto& uv0 = v[ia].texcoord;
+        const auto& uv1 = v[ib].texcoord;
+        const auto& uv2 = v[ic].texcoord;
 
         // Center of the first pixel.
         const float sx = static_cast<float>(p.x0) + 0.5f;
@@ -87,15 +87,15 @@ namespace Pumpkin {
         p.i1 = ib;
         p.i2 = ic;
 
-        p.zKey = az + bz + cz;
+        p.zKey = std::max({az, bz, cz});
         if (!colors.empty())
             p.transparent = colors[ia].a < 255 || colors[ib].a < 255 || colors[ic].a < 255;
 
         dst.push_back(p);
     }
 
-    void AssemblePrimitives(std::span<const Vec4f> screen, std::span<const std::uint32_t> indices,
-        std::span<const Color> colors, std::span<const Vec2f> tex, const AssemblyDesc& desc, PrimitiveBatch& out) {
+    void AssemblePrimitives(std::span<const Vertex> screen, std::span<const std::uint32_t> indices,
+        std::span<const Color> colors, const AssemblyDesc& desc, PrimitiveBatch& out) {
         const auto start = StageTimer::Clock::now();
 
         const bool valid = indices.size() % 3 == 0
@@ -116,7 +116,7 @@ namespace Pumpkin {
             const std::size_t begin = c * kSetupChunk;
             const std::size_t end = std::min(begin + kSetupChunk, triCount);
             for (std::size_t t = begin; t < end; ++t)
-                AssembleTriangle(screen, indices, colors, tex, t, desc, dst);
+                AssembleTriangle(screen, indices, colors, t, desc, dst);
         });
 
         gTimer.buildMs += StageTimer::Ms(start, StageTimer::Clock::now());

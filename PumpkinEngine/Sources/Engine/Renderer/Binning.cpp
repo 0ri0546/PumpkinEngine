@@ -112,7 +112,7 @@ namespace Pumpkin {
                     const std::uint32_t key = SortableKey(t.zKey);
 
                     const std::size_t cls = t.transparent ? 1 : 0;
-                    const SortItem item{ key, id };
+                    const SortItem item{ t.transparent ? ~key : key, id };
                     ForEachTile(t, tilesX, [&](std::size_t tile) {
                         out[cursor[tile * 2 + cls]++] = item;
                     });
