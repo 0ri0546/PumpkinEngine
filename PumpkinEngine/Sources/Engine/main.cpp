@@ -1,13 +1,3 @@
-#include <Math/Mat.h>
-#include <Renderer/Rasterizer.hpp>
-#include <Renderer/Shaders.hpp>
-#include <Renderer/Transform.hpp>
-#include <Renderer/Types.hpp>
-#include <Utils/ObjParser.hpp>
-#include <Utils/Utils.hpp>
-
-#include <SDL3/SDL.h>
-
 #include <chrono>
 #include <cstddef>
 #include <cstdint>
@@ -20,11 +10,26 @@
 #include <unordered_map>
 #include <vector>
 
+#include <SDL3/SDL.h>
+
+#include <Math/Mat.h>
+
+#include <Renderer/Fragment.hpp>
+#include <Renderer/PrimitiveAssembly.hpp>
+#include <Renderer/Rasterizer.hpp>
+#include <Renderer/Shaders.hpp>
+#include <Renderer/Transform.hpp>
+#include <Renderer/Types.hpp>
+
+#include <Utils/ObjParser.hpp>
+#include <Utils/Utils.hpp>
+
+
 using namespace Pumpkin;
 
 constexpr uint64_t kDefaultTargetFps = 120;
 constexpr uint64_t kUncappedFps      = 9'999'999;
-constexpr float    kDefaultVertexW   = 110.0f;
+constexpr float    kDefaultVertexW   = 2.0f;
 constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
 // ---------------------------------------------------------------------------
@@ -34,19 +39,31 @@ constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = true) {
     if (filepath.extension().string() != ".obj") return Mesh{};
 
-    // triangle test when debugging
-    static constexpr bool triangle = false;
-    if constexpr (triangle) {
-        Mesh triangleMesh{};
-        triangleMesh.vertices = {
-            {{ 0.0f, 1.0f, 0.5f, 1.0f },{},{}},
-            {{ -1.0f, -1.0f, 0.5f, 1.0f },{},{}},
-            {{ 1.0f, -1.0f, 0.5f, 1.0f },{},{}}
-        };
-        triangleMesh.colors = {{255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255}};
-        triangleMesh.indices = {0, 1, 2};
-        return triangleMesh;
-    }
+    // triangle test
+	static constexpr bool triangleTest = false;
+	if constexpr (triangleTest) {
+		Mesh mesh{};
+		mesh.vertices = {
+			{
+				{ 0.0f, 1.0f, 0.5f, 1.0f },
+				{},
+				{}
+			},
+			{
+				{ -1.0f, -1.0f, 0.5f, 1.0f },
+				{},
+				{}
+			},
+			{
+				{ 1.0f, -1.0f, 0.5f, 1.0f },
+				{},
+				{}
+			}
+		};
+		mesh.colors = { {255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255} };
+		mesh.indices = { 0, 1, 2 };
+		return mesh;
+	}
 
     const auto [attribs, objIndices] = LoadObj(filepath);
 
@@ -110,18 +127,23 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
         );
     }
 
-    mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 127, 0, 107);
+    mesh.colors = GenerateRGBA(mesh.vertices.size(), 127, 127, 127, 127);
     return mesh;
 }
 
-// Pipeline: input -> clip -> screen -> pixel shader
-// (the pixel shader calls the rasterizer, then shades during rasterization)
+// Pipeline: vertex stage -> primitive assembly -> rasterizer -> fragment shader
 static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
     static const std::vector<Vertex> originalVertices = mesh.vertices;
     static const std::vector<Vec4f> originalPositions = [&] {
         std::vector<Vec4f> p;
         p.reserve(originalVertices.size());
         for (const auto& v : originalVertices) p.push_back(v.position);
+        return p;
+    }();
+    static const std::vector<Vec3f> originalNormals = [&] {
+        std::vector<Vec3f> p;
+        p.reserve(originalVertices.size());
+        for (const auto& v : originalVertices) p.push_back(v.normal);
         return p;
     }();
     static constexpr float speed = 1.0f;
@@ -138,7 +160,6 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
     constexpr float zScale = 0.5f / 0.8660254f;
 
     const float angle = t * speed;
-
     // Angle is 0 for a disabled axis, which makes that rotation a no-op.
     const float angleX = rotateX ? angle : 0.0f;
     const float angleY = rotateY ? angle : 0.0f;
@@ -146,21 +167,33 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
 
     const Mat3x4 M = BuildTransform(angleX, angleY, angleZ, pivotX, pivotY, pivotZ, zScale);
 
-    // no-op at the moment, cameras + mvp coming later
-    //const std::vector<Vertex> clip = VertexShader(mesh.vertices);
-
+    // 1. Vertex stage: model -> screen space
     static std::vector<Vec4f> screen;
     if (!TransformToScreen(originalPositions, screen, M, fb.width, fb.height)) return;
 
-    static Rasterizer rasterizer{
+    // no-op at the moment, cameras + mvp coming later, commented out
+    //const std::vector<Vertex> clip = VertexShader(mesh.vertices);
+
+    // 2. Primitive assembly: indices -> culled triangles with their setup
+    static PrimitiveBatch batch;
+    AssemblePrimitives(screen, mesh.indices, mesh.colors,
+        { .culling = CullMode::Back, .width = fb.width, .height = fb.height }, batch);
+
+    // 3. Rasterizer + 4. fragment shader (called once per visible pixel)
+    static const Rasterizer rasterizer{
         .ClearColor = 0x00000000u,
-        .Culling = CullMode::Back,
         .DepthTest = DepthTestMode::Less,
         .AlphaBlend = BlendMode::Alpha,
-        .Projection = CameraType::Orthographic
+        .Projection = CameraType::Perspective
     };
-    rasterizer.RasterizeFrame(screen, mesh.indices, mesh.colors, fb, db);
-    // Pixel shader incoming
+	static LambertShader lambertShader{
+		.normals = std::span<const Vec3f>{ originalNormals },
+		.colors = std::span<const Color>{ mesh.colors },
+		.lightDir = { 0.0f, 0.0f, 1.0f },
+		.lightCol = { 1.0f, 1.0f, 1.0f },
+		.ambient = 0.1f
+	};
+    rasterizer.Rasterize(batch, fb, db, lambertShader);//VertexColorShader{ .colors = mesh.colors });
 }
 
 // ---------------------------------------------------------------------------
@@ -236,7 +269,7 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh pumpkin = LoadMesh("Assets/Pumpkin.obj");
+    Mesh teapot = LoadMesh("Assets/Elephant.obj");
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
     auto nextFrame = std::chrono::steady_clock::now();
@@ -269,7 +302,7 @@ int main() {
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
-        DrawMesh(pumpkin, *fb, *db);
+        DrawMesh(teapot, *fb, *db);
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.

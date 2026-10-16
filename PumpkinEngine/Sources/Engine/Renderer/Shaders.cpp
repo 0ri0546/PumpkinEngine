@@ -22,6 +22,6 @@ namespace Pumpkin {
         const std::vector<Color>& colors
     ) {
         
-        rasterizer.RasterizeFrame(vertices, indices, colors, fb, db);
+        //rasterizer.RasterizeFrame(vertices, indices, colors, fb, db);
     }
 }

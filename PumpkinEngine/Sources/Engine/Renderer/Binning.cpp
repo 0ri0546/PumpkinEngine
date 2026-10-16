@@ -51,7 +51,7 @@ namespace Pumpkin {
 
     // Calls fn(tileIndex) for every tile touched by the triangle's bounding box.
     template <class Fn>
-    static void ForEachTile(const Triangle& t, int tilesX, Fn&& fn) {
+    static void ForEachTile(const Primitive& t, int tilesX, Fn&& fn) {
         const int tx0 = t.x0 / kTileSize, tx1 = (t.x1 - 1) / kTileSize;
         const int ty0 = t.y0 / kTileSize, ty1 = (t.y1 - 1) / kTileSize;
         for (int ty = ty0; ty <= ty1; ++ty)
@@ -59,8 +59,8 @@ namespace Pumpkin {
                 fn(static_cast<std::size_t>(ty) * tilesX + tx);
     }
 
-    void BinTriangles(const std::vector<std::vector<Triangle>>& chunks,
-        int tilesX, int tilesY, BinData& bins) {
+    void BinPrimitives(const PrimitiveBatch& batch, int tilesX, int tilesY, BinData& bins) {
+        const auto& chunks = batch.chunks;
         const std::size_t tileCount = static_cast<std::size_t>(tilesX) * tilesY;
         const std::size_t jobCount = (chunks.size() + kChunksPerJob - 1) / kChunksPerJob;
 
@@ -73,7 +73,7 @@ namespace Pumpkin {
             std::uint32_t* c = counts.data() + job * tileCount * 2;
             const std::size_t end = std::min((job + 1) * kChunksPerJob, chunks.size());
             for (std::size_t ci = job * kChunksPerJob; ci < end; ++ci)
-                for (const Triangle& t : chunks[ci]) {
+                for (const Primitive& t : chunks[ci]) {
                     const std::size_t cls = t.transparent ? 1 : 0;
                     ForEachTile(t, tilesX, [&](std::size_t tile) { ++c[tile * 2 + cls]; });
                 }
@@ -107,7 +107,7 @@ namespace Pumpkin {
             for (std::size_t ci = job * kChunksPerJob; ci < end; ++ci) {
                 const auto& chunk = chunks[ci];
                 for (std::uint32_t local = 0; local < chunk.size(); ++local) {
-                    const Triangle& t = chunk[local];
+                    const Primitive& t = chunk[local];
                     const std::uint32_t id = (static_cast<std::uint32_t>(ci) << kChunkShift) | local;
                     const std::uint32_t key = SortableKey(t.zKey);
 

@@ -1,57 +1,34 @@
 #pragma once
 
+#include <Renderer/Fragment.hpp>
+#include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Types.hpp>
 
-#include <span>
+#include <cstdint>
 
 namespace Pumpkin {
-    // Plane: a value that changes in a straight line across the screen.
-    struct Plane {
-        float start; // value at the first pixel
-        float dx;    // change per pixel to the right
-        float dy;    // change per pixel down
+    /// @brief Stage 3: tiles, depth test, blending and the calls to the fragment shader.
+    ///
+    /// It does not know about vertices or lighting: it gets assembled primitives
+    /// and a shader that returns the color of each pixel.
+    class Rasterizer {
+    public:
+        std::uint32_t ClearColor = 0xFF000000u;
+        DepthTestMode DepthTest = DepthTestMode::Less;
+        BlendMode AlphaBlend = BlendMode::Alpha;
+        CameraType Projection = CameraType::Orthographic;
 
-        // Value `row` pixels down and `col` pixels right of the start.
-        [[nodiscard]] float At(float row, float col = 0.0f) const {
-            return start + dy * row + dx * col;
-        }
-    };
-
-    // Everything the rasterizer needs to draw one triangle.
-    struct Triangle {
-        int x0, y0, x1, y1;  // screen bounding box, [x0, x1) x [y0, y1)
-        bool transparent;
-        float zKey;          // used to sort triangles
-        Plane w0, w1, w2;    // barycentric weights
-        Plane z;             // depth
-        Plane k;             // perspective term (the "w" divide)
-        Plane r, g, b, a;    // color channels, already multiplied by k
-    };
-
-    struct Tile {
-        int x0, y0, x1, y1;
-    };
-
-	struct Rasterizer {
-		uint32_t 	  ClearColor{ 0x00000000u };
-		CullMode      Culling   { CullMode::Back };
-		DepthTestMode DepthTest { DepthTestMode::Less };
-		BlendMode     AlphaBlend{ BlendMode::Alpha };
-		CameraType    Projection{ CameraType::Perspective };
-		
-		void RasterizeFrame(
-			std::span<const Vec4f> v,
-			std::span<const uint32_t> indices,
-			std::span<const Color> colors,
-			const FrameBuffer& fb,
-			DepthBuffer& db
-		);
+        /// @brief Clears the frame, then draws all the primitives, calling `shader` for each visible pixel.
+        template <FragmentShader S>
+        void Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db, const S& shader) const;
 
     private:
-        void BuildTriangle(std::span<const Vec4f> v, std::span<const uint32_t> indices, std::span<const Color> colors, size_t tri, int width, int height, std::vector<Triangle>& dst) const;
-        void BuildTriangles(std::span<const Vec4f> v, std::span<const uint32_t> indices, std::span<const Color> colors, int width, int height, std::vector<std::vector<Triangle>>& chunks) const;
-        void ClearTile(const Tile& tile, float* depth, uint32_t* pixels, uint32_t width) const;
-        template<bool Transparent>
-        void DrawInTile(const Triangle& t, const Tile& tile, float* depth, uint32_t* pixels, uint32_t width) const;
+        void ClearTile(const Tile& tile, float* depth, std::uint32_t* pixels, std::uint32_t width) const;
+
+        template <bool Transparent, FragmentShader S>
+        void DrawInTile(const Primitive& t, std::uint32_t primitiveId, const Tile& tile,
+            float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader) const;
     };
 }
+
+#include <Renderer/Rasterizer.inl>

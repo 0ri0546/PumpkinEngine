@@ -6,6 +6,22 @@
 #include <Math/Vec.h>
 
 namespace Pumpkin {
+    // Plane: a value that changes in a straight line across the screen.
+    struct Plane {
+        float start; // value at the first pixel
+        float dx;    // change per pixel to the right
+        float dy;    // change per pixel down
+
+        // Value `row` pixels down and `col` pixels right of the start.
+        [[nodiscard]] float At(float row, float col = 0.0f) const {
+            return start + dy * row + dx * col;
+        }
+    };
+
+    struct Tile {
+        int x0, y0, x1, y1;
+    };
+
 	enum class CullMode {
 		None,
 		Back,
