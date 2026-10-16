@@ -1,27 +1,51 @@
 #include "Shaders.hpp"
 
 #include <Renderer/Rasterizer.hpp>
+#include <Renderer/Texture.hpp>
+#include <numbers>
+#include <iostream>
 
 namespace Pumpkin {
-    // TODO(When 3D): Near clipping + projection + MVP
-    std::vector<Vertex> VertexShader(const std::vector<Vertex>& vertices) {
-        std::vector<Vertex> clip{};
+
+    std::vector<Vertex> VertexShader(
+        const std::vector<Vertex>& vertices,
+        const Camera& camera,
+        float aspectRatio)
+    {
+        std::vector<Vertex> clip;
         clip.reserve(vertices.size());
-        for (const auto& v : vertices) {
-            clip.push_back(v);
+
+        const float fovRadians = camera.FOVY * (3.14159265f / 180.0f);
+
+        const Mat4f view = camera.getViewMatrix();
+        const Mat4f projection = Mat4f::Perspective(
+            fovRadians,
+            aspectRatio,
+            camera.nearFrame,
+            camera.farFrame
+        );
+
+        const Mat4f viewProjection = projection * view;
+
+        for (const auto& v : vertices)
+        {
+            Vertex transformed = v;
+            transformed.position = viewProjection * v.position;
+            clip.push_back(transformed);
         }
+
         return clip;
     }
 
     void PixelShader(
-		Rasterizer& rasterizer,
         const FrameBuffer& fb,
         DepthBuffer& db,
-        const std::vector<Vec4f>& vertices,
+        const std::vector<Vertex>& vertices,
         const std::vector<std::uint32_t>& indices,
-        const std::vector<Color>& colors
+        const std::vector<Color>& colors,
+        const Texture& texture
     ) {
-        
-        //rasterizer.RasterizeFrame(vertices, indices, colors, fb, db);
+        RasterizeFrame(vertices, indices, colors, fb, db, texture);
     }
+
 }

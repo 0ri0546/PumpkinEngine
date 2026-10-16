@@ -3,6 +3,7 @@
 #include <Renderer/Fragment.hpp>
 #include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Types.hpp>
+#include <Renderer/Texture.hpp>
 
 #include <cstdint>
 
@@ -20,7 +21,7 @@ namespace Pumpkin {
 
         /// @brief Clears the frame, then draws all the primitives, calling `shader` for each visible pixel.
         template <FragmentShader S>
-        void Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db, const S& shader) const;
+        void Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db, const S& shader, Texture& texture) const;
 
     private:
         void ClearTile(const Tile& tile, float* depth, std::uint32_t* pixels, std::uint32_t width) const;

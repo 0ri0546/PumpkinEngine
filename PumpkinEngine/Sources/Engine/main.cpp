@@ -9,6 +9,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <iostream>
 
 #include <SDL3/SDL.h>
 
@@ -18,11 +19,13 @@
 #include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Rasterizer.hpp>
 #include <Renderer/Shaders.hpp>
+#include <Renderer/Camera.hpp>
 #include <Renderer/Transform.hpp>
 #include <Renderer/Types.hpp>
-
 #include <Utils/ObjParser.hpp>
 #include <Utils/Utils.hpp>
+#include <Utils/Events/Events.hpp>
+#include <Renderer/Texture.hpp>
 
 
 using namespace Pumpkin;
@@ -128,11 +131,45 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
     }
 
     mesh.colors = GenerateRGBA(mesh.vertices.size(), 127, 127, 127, 127);
-    return mesh;
-}
+        if (!mesh.vertices.empty()) {
+            Vec3f minBounds{
+                mesh.vertices[0].position[0],
+                mesh.vertices[0].position[1],
+                mesh.vertices[0].position[2]
+            };
+
+            Vec3f maxBounds = minBounds;
+
+            for (const auto& vertex : mesh.vertices) {
+                for (int axis = 0; axis < 3; ++axis) {
+                    minBounds[axis] = std::min(minBounds[axis], vertex.position[axis]);
+                    maxBounds[axis] = std::max(maxBounds[axis], vertex.position[axis]);
+                }
+            }
+
+            Vec3f center = (minBounds + maxBounds) * 0.5f;
+            Vec3f size = maxBounds - minBounds;
+
+            float maxSize = std::max({ size[0], size[1], size[2] });
+
+            if (maxSize > 0.0f) {
+                float scale = 2.0f / maxSize;
+
+                for (auto& vertex : mesh.vertices) {
+                    for (int axis = 0; axis < 3; ++axis) {
+                        vertex.position[axis] =
+                            (vertex.position[axis] - center[axis]) * scale;
+                    }
+                }
+            }
+        }
+
+        mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 127);
+        return mesh;
+    }
 
 // Pipeline: vertex stage -> primitive assembly -> rasterizer -> fragment shader
-static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
+static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera, const Texture& texture) {
     static const std::vector<Vertex> originalVertices = mesh.vertices;
     static const std::vector<Vec4f> originalPositions = [&] {
         std::vector<Vec4f> p;
@@ -171,8 +208,11 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
     static std::vector<Vec4f> screen;
     if (!TransformToScreen(originalPositions, screen, M, fb.width, fb.height)) return;
 
-    // no-op at the moment, cameras + mvp coming later, commented out
-    //const std::vector<Vertex> clip = VertexShader(mesh.vertices);
+    const std::vector<Vertex> clip = VertexShader(
+        mesh.vertices,
+        camera,
+        static_cast<float>(fb.width) / static_cast<float>(fb.height)
+    );
 
     // 2. Primitive assembly: indices -> culled triangles with their setup
     static PrimitiveBatch batch;
@@ -193,7 +233,8 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db) {
 		.lightCol = { 1.0f, 1.0f, 1.0f },
 		.ambient = 0.1f
 	};
-    rasterizer.Rasterize(batch, fb, db, lambertShader);//VertexColorShader{ .colors = mesh.colors });
+    PixelShader(batch, fb, db, lambertShader, texture);
+    //rasterizer.Rasterize(batch, fb, db, lambertShader);//VertexColorShader{ .colors = mesh.colors });
 }
 
 // ---------------------------------------------------------------------------
@@ -242,6 +283,10 @@ int main() {
     const auto db = std::make_unique<DepthBuffer>();
     uint64_t targetFps = kDefaultTargetFps;
 
+    Camera camera;
+
+    auto previousTime = std::chrono::steady_clock::now();
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::println("SDL could not initialize! SDL Error: {}", SDL_GetError());
         return 1;
@@ -250,7 +295,7 @@ int main() {
     {
         SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-        ResizeBuffers(*fb, *db, mode->h / 2, mode->h / 2);
+        ResizeBuffers(*fb, *db, mode->h - 200, mode->h - 200);
         if (mode->refresh_rate != 0.0f) {
             targetFps = kUncappedFps;//static_cast<std::int32_t>(mode->refresh_rate);
         }
@@ -269,7 +314,11 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh teapot = LoadMesh("Assets/Elephant.obj");
+    Mesh teapot = LoadMesh("Assets/VikingRoom.obj");
+    Texture texture;
+    if (!LoadTexture(texture, "Assets/Textures/VikingRoom.png")) {
+        std::println("Impossible de charger la texture.");
+    }
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
     auto nextFrame = std::chrono::steady_clock::now();
@@ -298,11 +347,21 @@ int main() {
             default:
                 break;
             }
+
+            Pumpkin::handleCameraEvent(camera, event);
         }
+
+
+        auto currentTime = std::chrono::steady_clock::now();
+        std::chrono::duration<float> elapsedTime = currentTime - previousTime;
+        float deltaTime = elapsedTime.count();
+        previousTime = currentTime;
+
+        Pumpkin::updateCameraMovement(camera, deltaTime);
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
-        DrawMesh(teapot, *fb, *db);
+        DrawMesh(teapot, *fb, *db, camera, texture);
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.
