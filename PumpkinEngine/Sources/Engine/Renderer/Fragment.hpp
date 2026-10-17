@@ -73,33 +73,26 @@ namespace Pumpkin {
         float shininess = 32.0f;
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f n = f.Interpolate(normals).Normalized();
+
+            /*return {
+                (n[0] * 0.5f + 0.5f) * 255.0f,
+                (n[1] * 0.5f + 0.5f) * 255.0f,
+                (n[2] * 0.5f + 0.5f) * 255.0f,
+                255.0f
+            };*/
+
             const Vec3f l = lightDir.Normalized();
-            const Vec3f v = viewDir.Normalized();
 
             const float diff = std::max(0.0f, Dot(n, l));
-
-            const Vec3f h = (l + v).Normalized();
-            const float spec = std::pow(
-                std::max(0.0f, Dot(n, h)),
-                shininess
-            ) * specularStrength;
+            const Vec3f lighting = lightCol * (ambient + diff);
 
             const PixelOutput color = VertexColorShader{ colors }(f);
-            const Vec3f base{ color.r, color.g, color.b };
-
-            const Vec3f ambientLight = lightCol * ambient;
-            const Vec3f diffuseLight = lightCol * diff;
-            const Vec3f specularLight = lightCol * spec;
-
-            const Vec3f out =
-                (ambientLight + diffuseLight) * base
-                + specularLight * 255.0f;
 
             return {
-                std::clamp(out[0], 0.0f, 255.0f),
-                std::clamp(out[1], 0.0f, 255.0f),
-                std::clamp(out[2], 0.0f, 255.0f),
+                std::clamp(lighting[0] * color.r, 0.0f, 255.0f),
+                std::clamp(lighting[1] * color.g, 0.0f, 255.0f),
+                std::clamp(lighting[2] * color.b, 0.0f, 255.0f),
                 color.a
             };
         }

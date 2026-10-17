@@ -166,52 +166,77 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
     return mesh;
 }
 
+static std::vector<Vec3f> ExtractNormals(
+    const std::vector<Vertex>& vertices)
+{
+    std::vector<Vec3f> normals;
+    normals.reserve(vertices.size());
+
+    for (const auto& vertex : vertices)
+        normals.push_back(vertex.normal);
+
+    return normals;
+}
+
 // Pipeline: vertex stage -> primitive assembly -> rasterizer -> fragment shader
-static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera& camera, const Texture& texture) {
-    static const std::vector<Vertex> originalVertices = mesh.vertices;
-    static const std::vector<Vec4f> originalPositions = [&] {
-        std::vector<Vec4f> p;
-        p.reserve(originalVertices.size());
-        for (const auto& v : originalVertices) p.push_back(v.position);
-        return p;
-    }();
-    static const std::vector<Vec3f> originalNormals = [&] {
-        std::vector<Vec3f> p;
-        p.reserve(originalVertices.size());
-        for (const auto& v : originalVertices) p.push_back(v.normal);
-        return p;
-    }();
-    static const std::vector<Vec2f> originalTex = [&] {
-        std::vector<Vec2f> p;
-        p.reserve(originalVertices.size());
-        for (const auto& v : originalVertices) p.push_back(v.texcoord);
-        return p;
-    }();
-
-    // 1. Vertex stage: model -> screen space
+static void DrawMesh(
+    Mesh& mesh,
+    const FrameBuffer& fb,
+    DepthBuffer& db,
+    Camera& camera,
+    const Texture& texture)
+{
+    // 1. Vertex stage: transform vertices into clip space
     const std::vector<Vertex> clip = VertexShader(
-    mesh.vertices, camera,
-    static_cast<float>(fb.width) / static_cast<float>(fb.height));
+        mesh.vertices,
+        camera,
+        static_cast<float>(fb.width) / static_cast<float>(fb.height)
+    );
 
-    static std::vector<Vertex> screen; // reused across frames, no realloc
-    if (!ToScreen(clip, screen, fb.width, fb.height)) {
-        // behind the camera, reject until real clipping exists
-        screen.clear();
+    // 2. Extract transformed normals
+    std::vector<Vec3f> transformedNormals;
+    transformedNormals.reserve(clip.size());
+
+    for (const auto& vertex : clip)
+    {
+        transformedNormals.push_back(vertex.normal);
     }
 
-    // 2. Primitive assembly: indices -> culled triangles with their setup
-    static PrimitiveBatch batch;
-    const static AssemblyDesc desc = { .culling = CullMode::Back, .width = fb.width, .height = fb.height };
-    AssemblePrimitives(screen, mesh.indices, mesh.colors, desc, batch);
+    // 3. Convert positions into screen space
+    static std::vector<Vertex> screen;
 
-    // Fragment shader (called once per visible pixel)
-	static LambertShader lambertShader{
-		.normals = std::span<const Vec3f>{ originalNormals },
-		.colors = std::span<const Color>{ mesh.colors },
-		.lightDir = { 0.0f, 0.0f, 1.0f },
-		.lightCol = { 1.0f, 1.0f, 1.0f },
-		.ambient = 0.8f
-	};
+    if (!ToScreen(clip, screen, fb.width, fb.height))
+    {
+        screen.clear();
+        return;
+    }
+
+    // 4. Primitive assembly
+    static PrimitiveBatch batch;
+
+    const AssemblyDesc desc{
+        .culling = CullMode::Back,
+        .width = fb.width,
+        .height = fb.height
+    };
+
+    AssemblePrimitives(
+        screen,
+        mesh.indices,
+        mesh.colors,
+        desc,
+        batch
+    );
+
+    // 5. Fragment shader
+    LambertShader lambertShader{
+        .normals = std::span<const Vec3f>{ transformedNormals },
+        .colors = std::span<const Color>{ mesh.colors },
+        .lightDir = { 0.0f, 0.0f, 1.0f },
+        .lightCol = { 1.0f, 1.0f, 1.0f },
+        .ambient = 0.8f
+    };
+
     PixelShader(batch, fb, db, lambertShader, texture);
 }
 

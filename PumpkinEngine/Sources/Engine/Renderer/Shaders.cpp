@@ -24,12 +24,30 @@ namespace Pumpkin {
 
         const Mat4f viewProjection = projection * view;
 
+
         for (const auto& v : vertices)
         {
             Vertex transformed = v;
             transformed.position = viewProjection * v.position;
+
+            const Vec4f normal4{
+                v.normal[0],
+                v.normal[1],
+                v.normal[2],
+                0.0f
+            };
+
+            const Vec4f viewNormal = view * normal4;
+
+            transformed.normal = Vec3f{
+                viewNormal[0],
+                viewNormal[1],
+                viewNormal[2]
+            }.Normalized();
+
             clip.push_back(transformed);
         }
+
 
         return clip;
     }
