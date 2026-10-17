@@ -75,15 +75,7 @@ namespace Pumpkin {
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
             const Vec3f n = f.Interpolate(normals).Normalized();
 
-            /*return {
-                (n[0] * 0.5f + 0.5f) * 255.0f,
-                (n[1] * 0.5f + 0.5f) * 255.0f,
-                (n[2] * 0.5f + 0.5f) * 255.0f,
-                255.0f
-            };*/
-
             const Vec3f l = lightDir.Normalized();
-
             const float diff = std::max(0.0f, Dot(n, l));
             const Vec3f lighting = lightCol * (ambient + diff);
 

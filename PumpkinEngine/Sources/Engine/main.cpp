@@ -34,6 +34,48 @@ constexpr uint64_t kUncappedFps      = 9'999'999;
 constexpr float    kDefaultVertexW   = 2.0f;
 constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
+
+static void GenerateNormals(Mesh& mesh)
+{
+    for (auto& vertex : mesh.vertices)
+        vertex.normal = Vec3f{};
+
+    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
+    {
+        const uint32_t i0 = mesh.indices[i];
+        const uint32_t i1 = mesh.indices[i + 1];
+        const uint32_t i2 = mesh.indices[i + 2];
+
+        const Vec3f p0{
+            mesh.vertices[i0].position[0],
+            mesh.vertices[i0].position[1],
+            mesh.vertices[i0].position[2]
+        };
+
+        const Vec3f p1{
+            mesh.vertices[i1].position[0],
+            mesh.vertices[i1].position[1],
+            mesh.vertices[i1].position[2]
+        };
+
+        const Vec3f p2{
+            mesh.vertices[i2].position[0],
+            mesh.vertices[i2].position[1],
+            mesh.vertices[i2].position[2]
+        };
+
+        const Vec3f normal = Cross(p1 - p0, p2 - p0);
+
+        mesh.vertices[i0].normal += normal;
+        mesh.vertices[i1].normal += normal;
+        mesh.vertices[i2].normal += normal;
+    }
+
+    for (auto& vertex : mesh.vertices)
+        vertex.normal = vertex.normal.Normalized();
+}
+
+
 // ---------------------------------------------------------------------------
 // Mesh loading / drawing
 // ---------------------------------------------------------------------------
@@ -68,6 +110,18 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
 	}
 
     const auto [attribs, objIndices] = LoadObj(filepath);
+
+    size_t validNormals = 0;
+
+    for (const auto& idx : objIndices)
+    {
+        if (idx.normal_index != kInvalidIndex)
+            ++validNormals;
+    }
+
+    std::cout << "OBJ normals: " << attribs.normals.size() / 3
+        << " | Face references with normals: " << validNormals
+        << " / " << objIndices.size() << '\n';
 
     Mesh mesh;
     mesh.vertices.reserve(objIndices.size());
@@ -163,6 +217,7 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
     }
 
     mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 255);
+    GenerateNormals(mesh);
     return mesh;
 }
 
@@ -232,9 +287,9 @@ static void DrawMesh(
     LambertShader lambertShader{
         .normals = std::span<const Vec3f>{ transformedNormals },
         .colors = std::span<const Color>{ mesh.colors },
-        .lightDir = { 0.0f, 0.0f, 1.0f },
+        .lightDir = { -1.0f, 0.5f, 0.5f },
         .lightCol = { 1.0f, 1.0f, 1.0f },
-        .ambient = 0.8f
+        .ambient = 0.3f
     };
 
     PixelShader(batch, fb, db, lambertShader, texture);
