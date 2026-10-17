@@ -392,9 +392,9 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh teapot = LoadMesh("Assets/Spot.obj");
+    Mesh teapot = LoadMesh("Assets/Pumpkin_.obj");
     Texture texture;
-    if (!LoadTexture(texture, "Assets/Textures/SpotTexture.png")) {
+    if (!LoadTexture(texture, "Assets/Textures/je_desactive_la_texture_pour_afficher_la_citrouille_sans_texture.png")) {
         std::println("Impossible to load texture.");
     }
 
