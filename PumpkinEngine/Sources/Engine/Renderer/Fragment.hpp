@@ -5,6 +5,8 @@
 #include <cstdint>
 #include <span>
 #include <type_traits>
+#include <algorithm>
+#include <cmath>
 
 namespace Pumpkin {
     /// @brief What the rasterizer knows about one covered pixel. This is the shader's input.
@@ -62,19 +64,44 @@ namespace Pumpkin {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
 
-        Vec3f lightDir{};
-        Vec3f lightCol{};
-		float ambient = 0.1f;
+        Vec3f lightDir{ 0.0f, 1.0f, 0.0f };
+        Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
+        Vec3f viewDir{ 0.0f, 0.0f, 1.0f };
 
+        float ambient = 0.3f;
+        float specularStrength = 0.2f;
+        float shininess = 32.0f;
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            const Vec3f n = f.Interpolate(normals);
-            const float diff = std::max(0.0f, Dot(n, lightDir) / n.Length());
-            const Vec3f diffuse = lightCol * diff;
-			const Vec3f ambientLight = ambient * lightCol;
+            Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f l = lightDir.Normalized();
+            const Vec3f v = viewDir.Normalized();
+
+            const float diff = std::max(0.0f, Dot(n, l));
+
+            const Vec3f h = (l + v).Normalized();
+            const float spec = std::pow(
+                std::max(0.0f, Dot(n, h)),
+                shininess
+            ) * specularStrength;
+
             const PixelOutput color = VertexColorShader{ colors }(f);
-            Vec3f out = (ambientLight + diffuse) * Vec3f{color.r, color.g, color.b};
-            return { out[0], out[1], out[2], 255};
+            const Vec3f base{ color.r, color.g, color.b };
+
+            const Vec3f ambientLight = lightCol * ambient;
+            const Vec3f diffuseLight = lightCol * diff;
+            const Vec3f specularLight = lightCol * spec;
+
+            const Vec3f out =
+                (ambientLight + diffuseLight) * base
+                + specularLight * 255.0f;
+
+            return {
+                std::clamp(out[0], 0.0f, 255.0f),
+                std::clamp(out[1], 0.0f, 255.0f),
+                std::clamp(out[2], 0.0f, 255.0f),
+                color.a
+            };
         }
     };
 }

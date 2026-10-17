@@ -210,7 +210,7 @@ static void DrawMesh(Mesh& mesh, const FrameBuffer& fb, DepthBuffer& db, Camera&
 		.colors = std::span<const Color>{ mesh.colors },
 		.lightDir = { 0.0f, 0.0f, 1.0f },
 		.lightCol = { 1.0f, 1.0f, 1.0f },
-		.ambient = 0.1f
+		.ambient = 0.8f
 	};
     PixelShader(batch, fb, db, lambertShader, texture);
 }
