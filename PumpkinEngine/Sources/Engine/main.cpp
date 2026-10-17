@@ -16,7 +16,6 @@
 
 #include <Renderer/Fragment.hpp>
 #include <Renderer/PrimitiveAssembly.hpp>
-#include <Renderer/Rasterizer.hpp>
 #include <Renderer/Shaders.hpp>
 #include <Renderer/Camera.hpp>
 #include <Renderer/Transform.hpp>

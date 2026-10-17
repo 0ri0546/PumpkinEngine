@@ -27,7 +27,8 @@ namespace Pumpkin {
             .ClearColor = 0x00000000u,
             .DepthTest = DepthTestMode::Less,
             .AlphaBlend = BlendMode::Alpha,
-            .Projection = CameraType::Orthographic
+            .Projection = CameraType::Orthographic,
+            .BilinearFiltering = true
         };
         rasterizer.Rasterize(batch, fb, db, shader, texture);
     }

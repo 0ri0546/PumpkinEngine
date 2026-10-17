@@ -14,10 +14,11 @@ namespace Pumpkin {
     /// and a shader that returns the color of each pixel.
     class Rasterizer {
     public:
-        std::uint32_t ClearColor = 0xFF000000u;
-        DepthTestMode DepthTest = DepthTestMode::Less;
-        BlendMode AlphaBlend = BlendMode::Alpha;
-        CameraType Projection = CameraType::Orthographic;
+        std::uint32_t ClearColor        = 0xFF000000u;
+        DepthTestMode DepthTest         = DepthTestMode::Less;
+        BlendMode     AlphaBlend        = BlendMode::Alpha;
+        CameraType    Projection        = CameraType::Orthographic;
+        bool          BilinearFiltering = true;
 
         /// @brief Clears the frame, then draws all the primitives, calling `shader` for each visible pixel.
         template <FragmentShader S>

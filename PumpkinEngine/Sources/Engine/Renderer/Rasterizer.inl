@@ -19,22 +19,126 @@ namespace Pumpkin {
             static BinData bins;
             return bins;
         }
+        
+        using TexelSIMD = __m256i;
 
         // 8 texels at once: wrap, UV -> pixel, clamp, gather. Returns 8 packed pixels in the texture's layout.
-        [[nodiscard]] inline __m256i SampleTexture8(const std::uint32_t* texels, int width, int height,
+        [[nodiscard]] inline TexelSIMD SampleTexture8(const std::uint32_t* texels, int width, int height,
             V::type u, V::type v) {
             u = V::sub(u, _mm256_floor_ps(u));
             v = V::sub(v, _mm256_floor_ps(v));
 
-            __m256i x = _mm256_cvttps_epi32(V::mul(u, V::set1(static_cast<float>(width))));
-            __m256i y = _mm256_cvttps_epi32(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))));
+            TexelSIMD x = _mm256_cvttps_epi32(V::mul(u, V::set1(static_cast<float>(width))));
+            TexelSIMD y = _mm256_cvttps_epi32(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))));
 
-            const __m256i zero = _mm256_setzero_si256();
+            const TexelSIMD zero = _mm256_setzero_si256();
             x = _mm256_min_epi32(_mm256_max_epi32(x, zero), _mm256_set1_epi32(width - 1));
             y = _mm256_min_epi32(_mm256_max_epi32(y, zero), _mm256_set1_epi32(height - 1));
 
-            const __m256i index = _mm256_add_epi32(_mm256_mullo_epi32(y, _mm256_set1_epi32(width)), x);
+            const TexelSIMD index = _mm256_add_epi32(_mm256_mullo_epi32(y, _mm256_set1_epi32(width)), x);
             return _mm256_i32gather_epi32(reinterpret_cast<const int*>(texels), index, 4);
+        }
+
+        // Four filtered channels (0..255 floats) for 8 pixels.
+        struct Texel8 { V::type r, g, b, a; };
+
+        template <int Shift>
+        [[nodiscard]] inline V::type BilerpChannel(TexelSIMD t00, TexelSIMD t10, TexelSIMD t01, TexelSIMD t11,
+            V::type tx, V::type ty) {
+            const auto lerp = [](V::type a, V::type b, V::type t) {
+                return V::add(a, V::mul(V::sub(b, a), t));
+            };
+            const V::type top    = lerp(Channel<Shift>(t00), Channel<Shift>(t10), tx);
+            const V::type bottom = lerp(Channel<Shift>(t01), Channel<Shift>(t11), tx);
+            return lerp(top, bottom, ty);
+        }
+
+        // Bilinear: 4 neighbouring texels blended by the fractional position. Repeat wrapping.
+        [[nodiscard]] inline Texel8 SampleTexture8Bilinear(const std::uint32_t* texels, int width, int height,
+            V::type u, V::type v) {
+            u = V::sub(u, _mm256_floor_ps(u));
+            v = V::sub(v, _mm256_floor_ps(v));
+
+            // Texel is centered at 0.5
+            // Shifting by half a texel
+            const V::type half = V::set1(0.5f);
+            const V::type fx = V::sub(V::mul(u, V::set1(static_cast<float>(width))), half);
+            const V::type fy = V::sub(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))), half);
+            const V::type flx = _mm256_floor_ps(fx);
+            const V::type fly = _mm256_floor_ps(fy);
+            const V::type tx = V::sub(fx, flx);
+            const V::type ty = V::sub(fy, fly);
+
+            const TexelSIMD zero = _mm256_setzero_si256();
+            const TexelSIMD one = _mm256_set1_epi32(1);
+            const TexelSIMD wMax = _mm256_set1_epi32(width - 1);
+            const TexelSIMD hMax = _mm256_set1_epi32(height - 1);
+
+            // x0 is in [-1, width-1], x1 in [0, width]
+            // Wrapping the two edge cases.
+            TexelSIMD x0 = _mm256_cvttps_epi32(flx);
+            TexelSIMD y0 = _mm256_cvttps_epi32(fly);
+            TexelSIMD x1 = _mm256_add_epi32(x0, one);
+            TexelSIMD y1 = _mm256_add_epi32(y0, one);
+
+            x0 = _mm256_blendv_epi8(x0, wMax, _mm256_cmpgt_epi32(zero, x0));
+            y0 = _mm256_blendv_epi8(y0, hMax, _mm256_cmpgt_epi32(zero, y0));
+            x1 = _mm256_andnot_si256(_mm256_cmpgt_epi32(x1, wMax), x1);
+            y1 = _mm256_andnot_si256(_mm256_cmpgt_epi32(y1, hMax), y1);
+
+            const TexelSIMD stride = _mm256_set1_epi32(width);
+            const TexelSIMD row0 = _mm256_mullo_epi32(y0, stride);
+            const TexelSIMD row1 = _mm256_mullo_epi32(y1, stride);
+
+            // The four nearest texels, see:
+            // https://github.com/rodrigogq/3d-cpu-engine/tree/main/chapter-12-clipping-filtering#128--bilinear-filtering
+            const int* base = reinterpret_cast<const int*>(texels);
+            const TexelSIMD t00 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x0), 4);
+            const TexelSIMD t10 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x1), 4);
+            const TexelSIMD t01 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x0), 4);
+            const TexelSIMD t11 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x1), 4);
+
+            return {
+                BilerpChannel<24>(t00, t10, t01, t11, tx, ty),
+                BilerpChannel<16>(t00, t10, t01, t11, tx, ty),
+                BilerpChannel<8>(t00, t10, t01, t11, tx, ty),
+                BilerpChannel<0>(t00, t10, t01, t11, tx, ty)
+            };
+        }
+
+        // Scalar version, same maths, for the 0..7 pixel tail.
+        struct TexelF { float r, g, b, a; };
+
+        [[nodiscard]] inline TexelF SampleTextureBilinear(const Texture& tex, float u, float v) {
+            const int w = tex.width;
+            const int h = tex.height;
+
+            u -= std::floor(u);
+            v -= std::floor(v);
+
+            const float fx = u * static_cast<float>(w) - 0.5f;
+            const float fy = (1.0f - v) * static_cast<float>(h) - 0.5f;
+            const float flx = std::floor(fx), fly = std::floor(fy);
+            const float tx = fx - flx, ty = fy - fly;
+
+            int x0 = static_cast<int>(flx), y0 = static_cast<int>(fly);
+            int x1 = x0 + 1, y1 = y0 + 1;
+            if (x0 < 0) x0 = w - 1;
+            if (y0 < 0) y0 = h - 1;
+            if (x1 >= w) x1 = 0;
+            if (y1 >= h) y1 = 0;
+
+            const std::uint32_t* p = tex.pixels.data();
+            const std::uint32_t t00 = p[y0 * w + x0], t10 = p[y0 * w + x1];
+            const std::uint32_t t01 = p[y1 * w + x0], t11 = p[y1 * w + x1];
+
+            const auto ch = [&](const int shift) {
+                const auto f = [&](const std::uint32_t t) { return static_cast<float>((t >> shift) & 0xFF); };
+                const float top    = f(t00) + (f(t10) - f(t00)) * tx;
+                const float bottom = f(t01) + (f(t11) - f(t01)) * tx;
+                return top + (bottom - top) * ty;
+            };
+            return { ch(24), ch(16), ch(8), ch(0) };
         }
     }
 
@@ -199,12 +303,20 @@ namespace Pumpkin {
                         V::type sa = V::load(outA);
 
                         if (hasTexture) {
-                            const __m256i texel = SampleTexture8(texture.pixels.data(), texture.width, texture.height,
-                                V::mul(vu, inv), V::mul(vv, inv));
-                            sr = V::mul(sr, V::mul(Channel<24>(texel), inv255));
-                            sg = V::mul(sg, V::mul(Channel<16>(texel), inv255));
-                            sb = V::mul(sb, V::mul(Channel<8>(texel), inv255));
-                            sa = V::mul(sa, V::mul(Channel<0>(texel), inv255));
+                            if (BilinearFiltering) {
+                                const Texel8 texel = SampleTexture8Bilinear(texture.pixels.data(), texture.width, texture.height, V::mul(vu, inv), V::mul(vv, inv));
+                                sr = V::mul(sr, V::mul(texel.r, inv255));
+                                sg = V::mul(sg, V::mul(texel.g, inv255));
+                                sb = V::mul(sb, V::mul(texel.b, inv255));
+                                sa = V::mul(sa, V::mul(texel.a, inv255));
+                            }
+                            else {
+                                const TexelSIMD texel = SampleTexture8(texture.pixels.data(), texture.width, texture.height, V::mul(vu, inv), V::mul(vv, inv));
+                                sr = V::mul(sr, V::mul(Channel<24>(texel), inv255));
+                                sg = V::mul(sg, V::mul(Channel<16>(texel), inv255));
+                                sb = V::mul(sb, V::mul(Channel<8>(texel), inv255));
+                                sa = V::mul(sa, V::mul(Channel<0>(texel), inv255));
+                            }
                         }
 
                         if constexpr (!Transparent) {
@@ -212,7 +324,7 @@ namespace Pumpkin {
                             StoreMasked(pixelRow + x, PackBGRA(sr, sg, sb, V::set1(255.0f)), mask);
                         }
                         else {
-                            const __m256i old = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(pixelRow + x));
+                            const TexelSIMD old = _mm256_loadu_si256(reinterpret_cast<const TexelSIMD*>(pixelRow + x));
 
                             const V::type a = Clamp01(V::mul(sa, inv255));
                             const V::type half = V::set1(0.5f);
@@ -220,7 +332,7 @@ namespace Pumpkin {
                                 return V::add(Blend(AlphaBlend, d, s, a), half);
                                 };
 
-                            const __m256i packed = PackBGRA(
+                            const TexelSIMD packed = PackBGRA(
                                 mix(Channel<16>(old), sr),
                                 mix(Channel<8>(old), sg),
                                 mix(Channel<0>(old), sb),
@@ -257,11 +369,20 @@ namespace Pumpkin {
 
                     float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
                     if (hasTexture) {
-                        const std::uint32_t texel = SampleTexture(texture, u * inv, v * inv);
-                        sr *= static_cast<float>((texel >> 24) & 0xFF) / 255.0f;
-                        sg *= static_cast<float>((texel >> 16) & 0xFF) / 255.0f;
-                        sb *= static_cast<float>((texel >> 8) & 0xFF) / 255.0f;
-                        sa *= static_cast<float>(texel & 0xFF) / 255.0f;
+                        if (BilinearFiltering) {
+                            const TexelF texel = SampleTextureBilinear(texture, u * inv, v * inv);
+                            sr *= texel.r / 255.0f;
+                            sg *= texel.g / 255.0f;
+                            sb *= texel.b / 255.0f;
+                            sa *= texel.a / 255.0f;
+                        }
+                        else {
+                            const std::uint32_t texel = SampleTexture(texture, u * inv, v * inv);
+                            sr *= static_cast<float>((texel >> 24) & 0xFF) / 255.0f;
+                            sg *= static_cast<float>((texel >> 16) & 0xFF) / 255.0f;
+                            sb *= static_cast<float>((texel >> 8) & 0xFF) / 255.0f;
+                            sa *= static_cast<float>(texel & 0xFF) / 255.0f;
+                        }
                     }
 
                     if constexpr (!Transparent) {
