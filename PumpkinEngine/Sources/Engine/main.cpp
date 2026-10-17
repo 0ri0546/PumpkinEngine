@@ -247,7 +247,7 @@ static void DrawMesh(
         static_cast<float>(fb.width) / static_cast<float>(fb.height)
     );
 
-    // 2. Extract transformed normals
+    // 2. Extract transformed normals -> retiré parce que doublon avec clipnearplane
 
     // 3. Convert positions into screen space
     static std::vector<Vertex> screen;
