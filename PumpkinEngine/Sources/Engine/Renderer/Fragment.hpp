@@ -60,6 +60,7 @@ namespace Pumpkin {
         }
     };
 
+
     struct LambertShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
@@ -69,22 +70,46 @@ namespace Pumpkin {
         Vec3f viewDir{ 0.0f, 0.0f, 1.0f };
 
         float ambient = 0.3f;
-        float specularStrength = 0.2f;
+        float specularStrength = 0.5f;
         float shininess = 32.0f;
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
             const Vec3f n = f.Interpolate(normals).Normalized();
-
             const Vec3f l = lightDir.Normalized();
+            const Vec3f v = viewDir.Normalized();
+
+            // Ambient lighting
+            const float ambientTerm = ambient;
+
+            // Diffuse lighting (Lambert)
             const float diff = std::max(0.0f, Dot(n, l));
-            const Vec3f lighting = lightCol * (ambient + diff);
+
+            // Specular lighting (Blinn-Phong)
+            float spec = 0.0f;
+
+            if (diff > 0.0f) {
+                const Vec3f h = (l + v).Normalized();
+                const float specAngle = std::max(0.0f, Dot(n, h));
+                spec = specularStrength * std::pow(specAngle, shininess);
+            }
 
             const PixelOutput color = VertexColorShader{ colors }(f);
 
+            const float diffuseLighting = ambientTerm + diff;
+
             return {
-                std::clamp(lighting[0] * color.r, 0.0f, 255.0f),
-                std::clamp(lighting[1] * color.g, 0.0f, 255.0f),
-                std::clamp(lighting[2] * color.b, 0.0f, 255.0f),
+                std::clamp(
+                    lightCol[0] * (color.r * diffuseLighting + 255.0f * spec),
+                    0.0f, 255.0f
+                ),
+                std::clamp(
+                    lightCol[1] * (color.g * diffuseLighting + 255.0f * spec),
+                    0.0f, 255.0f
+                ),
+                std::clamp(
+                    lightCol[2] * (color.b * diffuseLighting + 255.0f * spec),
+                    0.0f, 255.0f
+                ),
                 color.a
             };
         }

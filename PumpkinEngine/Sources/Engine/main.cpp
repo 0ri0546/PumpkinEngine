@@ -288,8 +288,12 @@ static void DrawMesh(
         .colors = std::span<const Color>{ mesh.colors },
         .lightDir = { -1.0f, 0.5f, 0.5f },
         .lightCol = { 1.0f, 1.0f, 1.0f },
-        .ambient = 0.3f
+        .viewDir = { 0.0f, 0.0f, 1.0f },
+        .ambient = 0.3f,
+        .specularStrength = 0.8f,
+        .shininess = 24.0f
     };
+
 
     PixelShader(batch, fb, db, lambertShader, texture);
 }
