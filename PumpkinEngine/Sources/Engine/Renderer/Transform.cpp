@@ -3,6 +3,9 @@
 #include <Utils/SIMDTraits.hpp>
 #include <Utils/ThreadPool.hpp>
 
+#include <algorithm>
+#include <utility>
+
 namespace Pumpkin {
     using V = simd_traits<float, 256>;
     static constexpr std::size_t kLanes = V::width;
@@ -90,4 +93,115 @@ namespace Pumpkin {
         if (!ok.load()) { out.clear(); return false; }
         return true;
     }
+
+
+    bool ClipNearPlane(
+        std::span<const Vertex> inputVertices,
+        std::span<const uint32_t> inputIndices,
+        std::span<const Color> inputColors,
+        std::vector<Vertex>& outputVertices,
+        std::vector<uint32_t>& outputIndices,
+        std::vector<Color>& outputColors)
+    {
+        outputVertices.clear();
+        outputIndices.clear();
+        outputColors.clear();
+
+        auto distance = [](const Vertex& v) {
+            return v.position[2] + v.position[3];
+            };
+
+        auto interpolate = [](const Vertex& a, const Vertex& b, float t) {
+            Vertex result;
+            result.position = a.position + (b.position - a.position) * t;
+            result.texcoord = a.texcoord + (b.texcoord - a.texcoord) * t;
+            result.normal = (a.normal + (b.normal - a.normal) * t).Normalized();
+            return result;
+            };
+
+        auto interpolateColor = [](const Color& a, const Color& b, float t) {
+            auto channel = [t](uint8_t x, uint8_t y) {
+                return static_cast<uint8_t>(
+                    std::clamp(
+                        static_cast<float>(x) +
+                        (static_cast<float>(y) - x) * t,
+                        0.0f, 255.0f
+                    )
+                    );
+                };
+
+            return Color{
+                channel(a.r, b.r),
+                channel(a.g, b.g),
+                channel(a.b, b.b),
+                channel(a.a, b.a)
+            };
+            };
+
+        for (size_t i = 0; i + 2 < inputIndices.size(); i += 3) {
+            const uint32_t ids[] = {
+                inputIndices[i],
+                inputIndices[i + 1],
+                inputIndices[i + 2]
+            };
+
+            std::vector<std::pair<Vertex, Color>> polygon;
+
+            for (int j = 0; j < 3; ++j) {
+                const uint32_t id = ids[j];
+                if (id >= inputVertices.size() || id >= inputColors.size())
+                    continue;
+
+                polygon.emplace_back(inputVertices[id], inputColors[id]);
+            }
+
+            if (polygon.size() != 3)
+                continue;
+
+            std::vector<std::pair<Vertex, Color>> clipped;
+
+            for (size_t j = 0; j < polygon.size(); ++j) {
+                const auto& current = polygon[j];
+                const auto& next = polygon[(j + 1) % polygon.size()];
+
+                const float d0 = distance(current.first);
+                const float d1 = distance(next.first);
+
+                const bool inside0 = d0 >= 0.0f;
+                const bool inside1 = d1 >= 0.0f;
+
+                if (inside0)
+                    clipped.push_back(current);
+
+                if (inside0 != inside1) {
+                    const float t = d0 / (d0 - d1);
+
+                    clipped.emplace_back(
+                        interpolate(current.first, next.first, t),
+                        interpolateColor(current.second, next.second, t)
+                    );
+                }
+            }
+
+            if (clipped.size() < 3)
+                continue;
+
+            const uint32_t base =
+                static_cast<uint32_t>(outputVertices.size());
+
+            for (const auto& vertex : clipped) {
+                outputVertices.push_back(vertex.first);
+                outputColors.push_back(vertex.second);
+            }
+
+            for (uint32_t j = 1; j + 1 < clipped.size(); ++j) {
+                outputIndices.push_back(base);
+                outputIndices.push_back(base + j);
+                outputIndices.push_back(base + j + 1);
+            }
+        }
+
+        return !outputIndices.empty();
+    }
+
 }

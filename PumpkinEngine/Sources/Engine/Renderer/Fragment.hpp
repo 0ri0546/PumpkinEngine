@@ -78,13 +78,8 @@ namespace Pumpkin {
             const Vec3f l = lightDir.Normalized();
             const Vec3f v = viewDir.Normalized();
 
-            // Ambient lighting
             const float ambientTerm = ambient;
-
-            // Diffuse lighting (Lambert)
             const float diff = std::max(0.0f, Dot(n, l));
-
-            // Specular lighting (Blinn-Phong)
             float spec = 0.0f;
 
             if (diff > 0.0f) {

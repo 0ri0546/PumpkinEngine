@@ -248,20 +248,37 @@ static void DrawMesh(
     );
 
     // 2. Extract transformed normals
-    std::vector<Vec3f> transformedNormals;
-    transformedNormals.reserve(clip.size());
-
-    for (const auto& vertex : clip)
-    {
-        transformedNormals.push_back(vertex.normal);
-    }
 
     // 3. Convert positions into screen space
     static std::vector<Vertex> screen;
 
-    if (!ToScreen(clip, screen, fb.width, fb.height))
+    std::vector<Vertex> clippedVertices;
+    std::vector<uint32_t> clippedIndices;
+    std::vector<Color> clippedColors;
+
+    if (!ClipNearPlane(
+        clip,
+        mesh.indices,
+        mesh.colors,
+        clippedVertices,
+        clippedIndices,
+        clippedColors))
     {
-        screen.clear();
+        return;
+    }
+
+    std::vector<Vec3f> clippedNormals;
+    clippedNormals.reserve(clippedVertices.size());
+
+    for (const auto& vertex : clippedVertices)
+        clippedNormals.push_back(vertex.normal);
+
+    if (!ToScreen(
+        clippedVertices,
+        screen,
+        fb.width,
+        fb.height))
+    {
         return;
     }
 
@@ -276,16 +293,16 @@ static void DrawMesh(
 
     AssemblePrimitives(
         screen,
-        mesh.indices,
-        mesh.colors,
+        clippedIndices,
+        clippedColors,
         desc,
         batch
     );
 
     // 5. Fragment shader
     LambertShader lambertShader{
-        .normals = std::span<const Vec3f>{ transformedNormals },
-        .colors = std::span<const Color>{ mesh.colors },
+        .normals = std::span<const Vec3f>{ clippedNormals },
+        .colors = std::span<const Color>{ clippedColors },
         .lightDir = { -1.0f, 0.5f, 0.5f },
         .lightCol = { 1.0f, 1.0f, 1.0f },
         .viewDir = { 0.0f, 0.0f, 1.0f },
