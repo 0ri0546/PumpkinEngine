@@ -51,10 +51,10 @@ namespace Pumpkin {
             const unsigned char a = image[i * 4 + 3];
 
             texture.pixels[i] =
-                (static_cast<uint32_t>(r) << 24) |
-                (static_cast<uint32_t>(g) << 16) |
-                (static_cast<uint32_t>(b) << 8) |
-                static_cast<uint32_t>(a);
+                (static_cast<uint32_t>(a) << 24) |
+                (static_cast<uint32_t>(r) << 16) |
+                (static_cast<uint32_t>(g) << 8) |
+                static_cast<uint32_t>(b);
         }
 
         stbi_image_free(image);
