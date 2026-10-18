@@ -44,7 +44,7 @@ namespace Pumpkin {
     /// @brief A fragment shader is anything callable as `PixelOutput(const FragmentInput&)`:
     /// a lambda, or a struct with operator(). Its members are the "uniforms".
     template <class S>
-    concept FragmentShader = std::is_invocable_r_v<PixelOutput, const S&, const FragmentInput&>;
+    concept FragmentShader_T = std::is_invocable_r_v<PixelOutput, const S&, const FragmentInput&>;
 
     /// @brief Default shader: the interpolated vertex colors.
     struct VertexColorShader {
@@ -60,8 +60,37 @@ namespace Pumpkin {
         }
     };
 
-
     struct LambertShader {
+        std::span<const Vec3f> normals;
+        std::span<const Color> colors;
+
+        Vec3f lightDir{ 0.0f, 1.0f, 0.0f };
+        Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
+        Vec3f viewDir{ 0.0f, 0.0f, 1.0f };
+
+        float ambient = 0.3f;
+        float specularStrength = 0.2f;
+        float shininess = 32.0f;
+
+        [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
+            const Vec3f n = f.Interpolate(normals).Normalized();
+
+            const Vec3f l = lightDir.Normalized();
+            const float diff = std::max(0.0f, Dot(n, l));
+            const Vec3f lighting = lightCol * (ambient + diff);
+
+            const PixelOutput color = VertexColorShader{ colors }(f);
+
+            return {
+                std::clamp(lighting[0] * color.r, 0.0f, 255.0f),
+                std::clamp(lighting[1] * color.g, 0.0f, 255.0f),
+                std::clamp(lighting[2] * color.b, 0.0f, 255.0f),
+                color.a
+            };
+        }
+    };
+
+    struct BlinnPhongShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
 
@@ -93,18 +122,9 @@ namespace Pumpkin {
             const float diffuseLighting = ambientTerm + diff;
 
             return {
-                std::clamp(
-                    lightCol[0] * (color.r * diffuseLighting + 255.0f * spec),
-                    0.0f, 255.0f
-                ),
-                std::clamp(
-                    lightCol[1] * (color.g * diffuseLighting + 255.0f * spec),
-                    0.0f, 255.0f
-                ),
-                std::clamp(
-                    lightCol[2] * (color.b * diffuseLighting + 255.0f * spec),
-                    0.0f, 255.0f
-                ),
+                std::clamp(lightCol[0] * (color.r * diffuseLighting + 255.0f * spec), 0.0f, 255.0f),
+                std::clamp(lightCol[1] * (color.g * diffuseLighting + 255.0f * spec), 0.0f, 255.0f),
+                std::clamp(lightCol[2] * (color.b * diffuseLighting + 255.0f * spec), 0.0f, 255.0f),
                 color.a
             };
         }

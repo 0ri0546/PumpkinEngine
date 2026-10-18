@@ -103,105 +103,235 @@ namespace Pumpkin {
         std::vector<uint32_t>& outputIndices,
         std::vector<Color>& outputColors)
     {
-        outputVertices.clear();
-        outputIndices.clear();
-        outputColors.clear();
+        // TODO: could make it vary depending on the mesh size
+        constexpr size_t kTriChunk = 4096;
 
-        auto distance = [](const Vertex& v) {
-            return v.position[2] + v.position[3];
-            };
-
-        auto interpolate = [](const Vertex& a, const Vertex& b, float t) {
-            Vertex result;
-            result.position = a.position + (b.position - a.position) * t;
-            result.texcoord = a.texcoord + (b.texcoord - a.texcoord) * t;
-            result.normal = (a.normal + (b.normal - a.normal) * t).Normalized();
-            return result;
-            };
-
-        auto interpolateColor = [](const Color& a, const Color& b, float t) {
-            auto channel = [t](uint8_t x, uint8_t y) {
-                return static_cast<uint8_t>(
-                    std::clamp(
-                        static_cast<float>(x) +
-                        (static_cast<float>(y) - x) * t,
-                        0.0f, 255.0f
-                    )
-                    );
-                };
-
-            return Color{
-                channel(a.r, b.r),
-                channel(a.g, b.g),
-                channel(a.b, b.b),
-                channel(a.a, b.a)
-            };
-            };
-
-        for (size_t i = 0; i + 2 < inputIndices.size(); i += 3) {
-            const uint32_t ids[] = {
-                inputIndices[i],
-                inputIndices[i + 1],
-                inputIndices[i + 2]
-            };
-
-            std::vector<std::pair<Vertex, Color>> polygon;
-
-            for (int j = 0; j < 3; ++j) {
-                const uint32_t id = ids[j];
-                if (id >= inputVertices.size() || id >= inputColors.size())
-                    continue;
-
-                polygon.emplace_back(inputVertices[id], inputColors[id]);
-            }
-
-            if (polygon.size() != 3)
-                continue;
-
-            std::vector<std::pair<Vertex, Color>> clipped;
-
-            for (size_t j = 0; j < polygon.size(); ++j) {
-                const auto& current = polygon[j];
-                const auto& next = polygon[(j + 1) % polygon.size()];
-
-                const float d0 = distance(current.first);
-                const float d1 = distance(next.first);
-
-                const bool inside0 = d0 >= 0.0f;
-                const bool inside1 = d1 >= 0.0f;
-
-                if (inside0)
-                    clipped.push_back(current);
-
-                if (inside0 != inside1) {
-                    const float t = d0 / (d0 - d1);
-
-                    clipped.emplace_back(
-                        interpolate(current.first, next.first, t),
-                        interpolateColor(current.second, next.second, t)
-                    );
-                }
-            }
-
-            if (clipped.size() < 3)
-                continue;
-
-            const uint32_t base =
-                static_cast<uint32_t>(outputVertices.size());
-
-            for (const auto& vertex : clipped) {
-                outputVertices.push_back(vertex.first);
-                outputColors.push_back(vertex.second);
-            }
-
-            for (uint32_t j = 1; j + 1 < clipped.size(); ++j) {
-                outputIndices.push_back(base);
-                outputIndices.push_back(base + j);
-                outputIndices.push_back(base + j + 1);
-            }
+        const size_t n = std::min(inputVertices.size(), inputColors.size());
+        const size_t triCount = inputIndices.size() / 3;
+        if (n == 0 || triCount == 0) {
+            outputVertices.clear();
+            outputIndices.clear();
+            outputColors.clear();
+            return false;
         }
 
-        return !outputIndices.empty();
+        // Scratch reused between calls
+        static std::vector<float> dist;
+        static std::vector<uint8_t> used;           // 1 = vertex survives clipping
+        static std::vector<uint32_t> remap;         // input vertex -> output vertex
+        static std::vector<uint8_t> cls;            // per triangle: which vertices are outside (bit mask), 7 = dropped
+        static std::vector<uint32_t> usedCount, cutCount, indexCount; // per chunk
+
+        const size_t vertexChunks = (n + kVertexChunk - 1) / kVertexChunk;
+        const size_t triChunks = (triCount + kTriChunk - 1) / kTriChunk;
+
+        dist.resize(n);
+        used.resize(n);
+        remap.resize(n);
+        cls.resize(triCount);
+        usedCount.resize(vertexChunks);
+        cutCount.resize(triChunks);
+        indexCount.resize(triChunks);
+
+        const auto forEachChunk = [](size_t chunks, auto&& fn) {
+            if (chunks <= 1) {
+                for (size_t c = 0; c < chunks; ++c) fn(c);
+                return;
+            }
+            Pumpkin::ParallelFor(GetPool(), chunks, fn);
+        };
+
+        // Signed distance to the near plane for every vertex.
+        forEachChunk(vertexChunks, [&](size_t chunk) {
+            const size_t begin = chunk * kVertexChunk;
+            const size_t end = std::min(n, begin + kVertexChunk);
+            for (size_t i = begin; i < end; ++i) {
+                dist[i] = inputVertices[i].position[2] + inputVertices[i].position[3];
+                used[i] = 0;
+            }
+        });
+
+        // Output sizes for each triangle class (index = bit mask of outside vertices)
+        // 0: visible, 1/2/4: one outside (quad = 2 triangles), 3/5/6: two outside, 7: behind
+        // These are every possible configurations
+        constexpr uint32_t kCuts[8]    = { 0, 2, 2, 2, 2, 2, 2, 0 };
+        constexpr uint32_t kIndices[8] = { 3, 6, 6, 3, 6, 3, 3, 0 };
+
+        // Classifies every triangle, counts its output, marks the vertices that survive
+        forEachChunk(triChunks, [&](size_t chunk) {
+            const size_t begin = chunk * kTriChunk;
+            const size_t end = std::min(triCount, begin + kTriChunk);
+            uint32_t cuts = 0, indices = 0;
+
+            const auto mark = [&](uint32_t id) {
+                // avoids race conditions
+                std::atomic_ref<uint8_t> flag(used[id]);
+                if (flag.load(std::memory_order_relaxed) == 0)
+                    flag.store(1, std::memory_order_relaxed);
+            };
+
+            const uint32_t* idx = inputIndices.data() + begin * 3;
+            for (size_t t = begin; t < end; ++t, idx += 3) {
+                const uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
+                if (v0 >= n || v1 >= n || v2 >= n) { cls[t] = 7; continue; }
+
+                const unsigned outside =
+                    (dist[v0] < 0.0f ? 1u : 0u) |
+                    (dist[v1] < 0.0f ? 2u : 0u) |
+                    (dist[v2] < 0.0f ? 4u : 0u);
+
+                cls[t] = static_cast<uint8_t>(outside);
+                cuts += kCuts[outside];
+                indices += kIndices[outside];
+
+                if (outside != 7) {
+                    if (!(outside & 1u)) mark(v0);
+                    if (!(outside & 2u)) mark(v1);
+                    if (!(outside & 4u)) mark(v2);
+                }
+            }
+            cutCount[chunk] = cuts;
+            indexCount[chunk] = indices;
+        });
+
+        // Prefix sums over the chunks: where each chunk starts writing.
+        uint32_t cutTotal = 0;
+        size_t indexTotal = 0;
+        for (size_t c = 0; c < triChunks; ++c) {
+            const uint32_t cuts = cutCount[c];
+            const uint32_t indices = indexCount[c];
+            cutCount[c] = cutTotal;
+            indexCount[c] = static_cast<uint32_t>(indexTotal);
+            cutTotal += cuts;
+            indexTotal += indices;
+        }
+
+        if (indexTotal == 0) {
+            outputVertices.clear();
+            outputIndices.clear();
+            outputColors.clear();
+            return false;
+        }
+
+        // Counts the surviving vertices per chunk
+        forEachChunk(vertexChunks, [&](size_t chunk) {
+            const size_t begin = chunk * kVertexChunk;
+            const size_t end = std::min(n, begin + kVertexChunk);
+            uint32_t count = 0;
+            for (size_t i = begin; i < end; ++i) count += used[i];
+            usedCount[chunk] = count;
+        });
+
+        uint32_t usedTotal = 0;
+        for (size_t c = 0; c < vertexChunks; ++c) {
+            const uint32_t count = usedCount[c];
+            usedCount[c] = usedTotal;
+            usedTotal += count;
+        }
+
+        outputVertices.resize(usedTotal + cutTotal);
+        outputColors.resize(usedTotal + cutTotal);
+        outputIndices.resize(indexTotal);
+
+        // Copies an input vertex into the output the first time it is used, then reuses it
+        forEachChunk(vertexChunks, [&](size_t chunk) {
+            const size_t begin = chunk * kVertexChunk;
+            const size_t end = std::min(n, begin + kVertexChunk);
+            uint32_t slot = usedCount[chunk];
+            for (size_t i = begin; i < end; ++i) {
+                if (!used[i]) continue;
+                remap[i] = slot;
+                outputVertices[slot] = inputVertices[i];
+                outputColors[slot] = inputColors[i];
+                ++slot;
+            }
+        });
+
+        // Builds the triangles. Each chunk writes into its own slice of the output
+        forEachChunk(triChunks, [&](size_t chunk) {
+            const size_t begin = chunk * kTriChunk;
+            const size_t end = std::min(triCount, begin + kTriChunk);
+
+            uint32_t nextVertex = usedTotal + cutCount[chunk];
+            size_t nextIndex = indexCount[chunk];
+
+            const auto outputIndex = [&](uint32_t id) -> uint32_t {
+                return remap[id];
+            };
+
+            // Point where the edge in -> out crosses the plane. Always computed from the inside
+            // vertex toward the outside one, so two triangles sharing an edge get bit-identical
+            // results (no cracks). din >= 0 > dout, so the division is safe and t is in [0, 1].
+            const auto cut = [&](uint32_t in, uint32_t out) -> uint32_t {
+                const float din = dist[in];
+                const float t = din / (din - dist[out]);
+                const Vertex& a = inputVertices[in];
+                const Vertex& b = inputVertices[out];
+                const Color& ca = inputColors[in];
+                const Color& cb = inputColors[out];
+
+                Vertex v;
+                v.position = a.position + (b.position - a.position) * t;
+                v.texcoord = a.texcoord + (b.texcoord - a.texcoord) * t;
+                v.normal = (a.normal + (b.normal - a.normal) * t).Normalized();
+
+                const auto lerp = [t](uint8_t x, uint8_t y) {
+                    return static_cast<uint8_t>(static_cast<float>(x) + (static_cast<float>(y) - static_cast<float>(x)) * t);
+                };
+
+                const uint32_t slot = nextVertex++;
+                outputVertices[slot] = v;
+                outputColors[slot] = Color{ lerp(ca.r, cb.r), lerp(ca.g, cb.g), lerp(ca.b, cb.b), lerp(ca.a, cb.a) };
+                return slot;
+            };
+
+            // Pushes back a triangle into output indices
+            const auto pushTriangle = [&](const uint32_t a, const uint32_t b, const uint32_t c) {
+                outputIndices[nextIndex++] = a;
+                outputIndices[nextIndex++] = b;
+                outputIndices[nextIndex++] = c;
+            };
+
+            // One vertex outside: the visible part is a quad, splits it into two triangles
+            // o is the outside vertex, a and b follow it in winding order
+            const auto clipOne = [&](const uint32_t o, const uint32_t a, const uint32_t b) {
+                const uint32_t p = cut(a, o);
+                const uint32_t q = cut(b, o);
+                const uint32_t ia = outputIndex(a);
+                const uint32_t ib = outputIndex(b);
+                pushTriangle(p, ia, ib);
+                pushTriangle(p, ib, q);
+            };
+
+            // Two vertices outside: a single smaller triangle, i is the inside vertex
+            const auto clipTwo = [&](uint32_t i, uint32_t o1, uint32_t o2) {
+                const uint32_t ii = outputIndex(i);
+                const uint32_t p = cut(i, o1);
+                const uint32_t q = cut(i, o2);
+                pushTriangle(ii, p, q);
+            };
+
+            const uint32_t* idx = inputIndices.data() + begin * 3;
+            for (size_t t = begin; t < end; ++t, idx += 3) {
+                const uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
+
+                switch (cls[t]) {
+                    case 0: pushTriangle(outputIndex(v0), outputIndex(v1), outputIndex(v2)); break; // fully visible: triangle
+                    case 7:                                                                         // fully behind / default: dropped
+                    default: break;
+
+                    // Rotations keep the winding order of the original triangle.
+                    case 1: clipOne(v0, v1, v2); break;
+                    case 2: clipOne(v1, v2, v0); break;
+                    case 4: clipOne(v2, v0, v1); break;
+                    case 6: clipTwo(v0, v1, v2); break;
+                    case 5: clipTwo(v1, v2, v0); break;
+                    case 3: clipTwo(v2, v0, v1); break;
+                }
+            }
+        });
+
+        return true;
     }
 
 }

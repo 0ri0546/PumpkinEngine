@@ -9,8 +9,8 @@ namespace Pumpkin {
         const Camera& camera,
         float aspectRatio)
     {
-        std::vector<Vertex> clip;
-        clip.reserve(vertices.size());
+        static std::vector<Vertex> clip;
+        clip.resize(vertices.size());
 
         const float fovRadians = camera.FOVY * (3.14159265f / 180.0f);
 
@@ -24,9 +24,8 @@ namespace Pumpkin {
 
         const Mat4f viewProjection = projection * view;
 
-
-        for (const auto& v : vertices)
-        {
+        size_t i = 0;
+        for (const auto& v : vertices) {
             Vertex transformed = v;
             transformed.position = viewProjection * v.position;
 
@@ -45,7 +44,7 @@ namespace Pumpkin {
                 viewNormal[2]
             }.Normalized();
 
-            clip.push_back(transformed);
+            clip[i++] = transformed;
         }
 
 

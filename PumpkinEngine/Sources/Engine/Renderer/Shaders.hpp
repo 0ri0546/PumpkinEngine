@@ -15,8 +15,8 @@ namespace Pumpkin {
         float aspectRatio
     );
 
-    template <FragmentShader Shader>
-    void PixelShader(
+    template <FragmentShader_T Shader>
+    void FragmentShader(
         PrimitiveBatch& batch,
         const FrameBuffer& fb,
         DepthBuffer& db,

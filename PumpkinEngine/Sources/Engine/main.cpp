@@ -10,20 +10,20 @@
 #include <unordered_map>
 #include <vector>
 
+#include <Math/Mat.h>
 #include <SDL3/SDL.h>
 
-#include <Math/Mat.h>
-
+#include <Renderer/Camera.hpp>
 #include <Renderer/Fragment.hpp>
 #include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Shaders.hpp>
-#include <Renderer/Camera.hpp>
+#include <Renderer/Texture.hpp>
 #include <Renderer/Transform.hpp>
 #include <Renderer/Types.hpp>
 #include <Utils/ObjParser.hpp>
+#include <Utils/RenderProfiler.hpp>
 #include <Utils/Utils.hpp>
 #include <Utils/Events/Events.hpp>
-#include <Renderer/Texture.hpp>
 
 
 using namespace Pumpkin;
@@ -220,99 +220,111 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
     return mesh;
 }
 
-static std::vector<Vec3f> ExtractNormals(
-    const std::vector<Vertex>& vertices)
-{
-    std::vector<Vec3f> normals;
-    normals.reserve(vertices.size());
-
-    for (const auto& vertex : vertices)
-        normals.push_back(vertex.normal);
-
-    return normals;
-}
-
-// Pipeline: vertex stage -> primitive assembly -> rasterizer -> fragment shader
+// Pipeline: vertex shader -> clipping -> primitive assembly -> rasterizer -> fragment shader
 static void DrawMesh(
     Mesh& mesh,
     const FrameBuffer& fb,
     DepthBuffer& db,
-    Camera& camera,
+    const Camera& camera,
     const Texture& texture)
 {
-    // 1. Vertex stage: transform vertices into clip space
-    const std::vector<Vertex> clip = VertexShader(
-        mesh.vertices,
-        camera,
-        static_cast<float>(fb.width) / static_cast<float>(fb.height)
-    );
+    // 1. Vertex shader: calculates projection and transforms vertices into clip space
+    std::vector<Vertex> clip{};
+    {
+        Prof::Scope scope(Prof::Stage::Vertex);
 
-    // 2. Extract transformed normals -> retiré parce que doublon avec clipnearplane
+        clip = VertexShader(
+            mesh.vertices,
+            camera,
+            static_cast<float>(fb.width) / static_cast<float>(fb.height)
+        );
+    }
+
+    // 2. Vertex clipping
+    static std::vector<Vertex> clippedVertices;
+    static std::vector<uint32_t> clippedIndices;
+    static std::vector<Color> clippedColors;
+    static std::vector<Vec3f> clippedNormals;
+    {
+        Prof::Scope scope(Prof::Stage::Clip);
+
+        if (!ClipNearPlane(
+            clip,
+            mesh.indices,
+            mesh.colors,
+            clippedVertices,
+            clippedIndices,
+            clippedColors))
+        {
+            return;
+        }
+
+        const size_t count = clippedVertices.size();
+        clippedNormals.resize(count);
+        {
+            constexpr size_t kChunk = 16384;
+            const size_t chunks = (count + kChunk - 1) / kChunk;
+            const auto copyNormals = [&](size_t chunk) {
+                const size_t begin = chunk * kChunk;
+                const size_t end = std::min(count, begin + kChunk);
+                for (size_t i = begin; i < end; ++i)
+                    clippedNormals[i] = clippedVertices[i].normal;
+            };
+            if (chunks <= 1) copyNormals(0);
+            else ParallelFor(GetPool(), chunks, copyNormals);
+        }
+    }
 
     // 3. Convert positions into screen space
     static std::vector<Vertex> screen;
-
-    std::vector<Vertex> clippedVertices;
-    std::vector<uint32_t> clippedIndices;
-    std::vector<Color> clippedColors;
-
-    if (!ClipNearPlane(
-        clip,
-        mesh.indices,
-        mesh.colors,
-        clippedVertices,
-        clippedIndices,
-        clippedColors))
     {
-        return;
-    }
+        Prof::Scope scope(Prof::Stage::ToScreen);
 
-    std::vector<Vec3f> clippedNormals;
-    clippedNormals.reserve(clippedVertices.size());
-
-    for (const auto& vertex : clippedVertices)
-        clippedNormals.push_back(vertex.normal);
-
-    if (!ToScreen(
-        clippedVertices,
-        screen,
-        fb.width,
-        fb.height))
-    {
-        return;
+        if (!ToScreen(
+            clippedVertices,
+            screen,
+            fb.width,
+            fb.height))
+        {
+            return;
+        }
     }
 
     // 4. Primitive assembly
     static PrimitiveBatch batch;
+    {
+        Prof::Scope scope(Prof::Stage::Assemble);
 
-    const AssemblyDesc desc{
-        .culling = CullMode::Back,
-        .width = fb.width,
-        .height = fb.height
-    };
-
-    AssemblePrimitives(
-        screen,
-        clippedIndices,
-        clippedColors,
-        desc,
-        batch
-    );
+        const AssemblyDesc desc{
+            .culling = CullMode::Back,
+            .width = fb.width,
+            .height = fb.height
+        };
+        AssemblePrimitives(
+            screen,
+            clippedIndices,
+            clippedColors,
+            desc,
+            batch
+        );
+    }
 
     // 5. Fragment shader
-    LambertShader lambertShader{
-        .normals = std::span<const Vec3f>{ clippedNormals },
-        .colors = std::span<const Color>{ clippedColors },
-        .lightDir = { -1.0f, 0.5f, 0.5f },
-        .lightCol = { 1.0f, 1.0f, 1.0f },
-        .viewDir = { 0.0f, 0.0f, 1.0f },
-        .ambient = 0.3f,
-        .specularStrength = 0.8f,
-        .shininess = 24.0f
-    };
+    {
+        Prof::Scope scope(Prof::Stage::Fragment);
 
-
-    PixelShader(batch, fb, db, lambertShader, texture);
+        BlinnPhongShader blinnPhongShader {
+            .normals = std::span<const Vec3f>{ clippedNormals },
+            .colors = std::span<const Color>{ clippedColors },
+            .lightDir = { -1.0f, 0.5f, 0.5f },
+            .lightCol = { 1.0f, 1.0f, 1.0f },
+            .viewDir = { 0.0f, 0.0f, 1.0f },
+            .ambient = 0.3f,
+            .specularStrength = 0.8f,
+            .shininess = 24.0f
+        };
+        FragmentShader(batch, fb, db, blinnPhongShader, texture);
+    }
 }
 
 // ---------------------------------------------------------------------------
@@ -354,6 +366,11 @@ static void ResizeBuffers(FrameBuffer& fb, DepthBuffer& db, int width, int heigh
     db.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height), 1.0f);
 }
 
+static bool WindowNotFocused(SDL_Window* window) {
+    const SDL_WindowFlags flags = SDL_GetWindowFlags(window);
+    return !(flags & SDL_WINDOW_INPUT_FOCUS) || (flags & SDL_WINDOW_MINIMIZED);
+}
+
 // ---------------------------------------------------------------------------
 
 int main() {
@@ -392,9 +409,9 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh teapot = LoadMesh("Assets/Pumpkin_.obj");
+    Mesh cow = LoadMesh("Assets/Spot.obj");
     Texture texture;
-    if (!LoadTexture(texture, "Assets/Textures/je_desactive_la_texture_pour_afficher_la_citrouille_sans_texture.png")) {
+    if (!LoadTexture(texture, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
     }
 
@@ -429,6 +446,10 @@ int main() {
             Pumpkin::handleCameraEvent(camera, event);
         }
 
+        if (WindowNotFocused(window)) {
+            std::this_thread::sleep_until(nextFrame);
+            continue;
+        }
 
         auto currentTime = std::chrono::steady_clock::now();
         std::chrono::duration<float> elapsedTime = currentTime - previousTime;
@@ -439,7 +460,7 @@ int main() {
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
-        DrawMesh(teapot, *fb, *db, camera, texture);
+        DrawMesh(cow, *fb, *db, camera, texture);
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.
@@ -451,6 +472,7 @@ int main() {
             lastFpsUpdate = now;
         }
 
+        Prof::EndFrame();
         std::this_thread::sleep_until(nextFrame);
     }
 

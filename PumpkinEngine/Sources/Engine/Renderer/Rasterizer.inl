@@ -142,7 +142,7 @@ namespace Pumpkin {
         }
     }
 
-    template <FragmentShader S>
+    template <FragmentShader_T S>
     void Rasterizer::Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db,
         const S& shader, const Texture& texture) const {
         if (fb.width == 0 || fb.height == 0) return;
@@ -200,7 +200,7 @@ namespace Pumpkin {
         gTimer.EndFrame(batch.Size());
     }
 
-    template <bool Transparent, FragmentShader S>
+    template <bool Transparent, FragmentShader_T S>
     void Rasterizer::DrawInTile(const Primitive& t, std::uint32_t primitiveId, const Tile& tile,
         float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader, const Texture& texture) const {
         using namespace Detail;
