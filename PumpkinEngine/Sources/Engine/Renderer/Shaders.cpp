@@ -4,6 +4,16 @@
 
 namespace Pumpkin {
 
+    Mat4f RotationY(float angle) {
+        const float c = std::cos(angle);
+        const float s = std::sin(angle);
+
+        Mat4f m = Mat4f::Identity();
+        m[0,0] = c;   m[0,2] = s;
+        m[2,0] = -s;  m[2,2] = c;
+        return m;
+    }
+
     std::vector<Vertex> VertexShader(
         const std::vector<Vertex>& vertices,
         const Camera& camera,
@@ -26,8 +36,12 @@ namespace Pumpkin {
 
         size_t i = 0;
         for (const auto& v : vertices) {
+			const static auto start = std::chrono::steady_clock::now();
+			const auto now = std::chrono::steady_clock::now();
+			const float elapsed = std::chrono::duration<float>(now - start).count();
             Vertex transformed = v;
-            transformed.position = viewProjection * v.position;
+            Mat4f model = RotationY(elapsed);
+            transformed.position = viewProjection * (model * v.position);
 
             const Vec4f normal4{
                 v.normal[0],
@@ -36,7 +50,7 @@ namespace Pumpkin {
                 0.0f
             };
 
-            const Vec4f viewNormal = view * normal4;
+            const Vec4f viewNormal = view * model * normal4;
 
             transformed.normal = Vec3f{
                 viewNormal[0],
