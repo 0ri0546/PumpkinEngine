@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <Math/Vec.h>
+#include <SDL3/SDL_ttf.h>
 
 namespace Pumpkin {
     // Plane: a value that changes in a straight line across the screen.
@@ -78,6 +79,28 @@ namespace Pumpkin {
         std::vector<Vertex> vertices;
         std::vector<uint32_t> indices;
         std::vector<Color> colors;
+    };
+
+    struct Text {
+        Text(TTF_Font* font, const char* text, float size, SDL_Color color, int x, int y) {
+            this->text = text;
+            this->font = font;
+            this->x = x, this->y = y;
+            this->surface = TTF_RenderText_Blended(
+                font,
+                text,
+                0,
+                color
+            );
+            this->fontSize = size;
+            TTF_SetFontSize(this->font, this->fontSize);
+        }
+        float fontSize;
+        int x, y;
+        SDL_Color color;
+        const char* text;
+        SDL_Surface* surface;
+        TTF_Font* font;
     };
 }
 

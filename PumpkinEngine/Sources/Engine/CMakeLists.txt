@@ -18,6 +18,11 @@ if(WIN32)
             "${CMAKE_SOURCE_DIR}/PumpkinEngine/Libraries/SDL3/lib/x64/SDL3.dll"
             $<TARGET_FILE_DIR:PumpkinEngine>
     )
+    add_custom_command(TARGET PumpkinEngine POST_BUILD
+            COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${CMAKE_SOURCE_DIR}/PumpkinEngine/Libraries/SDL3/lib/x64/SDL3_ttf.dll"
+            $<TARGET_FILE_DIR:PumpkinEngine>
+    )
     target_sources(PumpkinEngine PRIVATE
             ${CMAKE_SOURCE_DIR}/Assets/Windows/PumpkinEngine.rc
     )
