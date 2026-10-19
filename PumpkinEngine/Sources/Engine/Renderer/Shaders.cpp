@@ -1,67 +1,59 @@
 #include "Shaders.hpp"
 
+#include <numbers>
+
 #include <Renderer/Rasterizer.hpp>
 
 namespace Pumpkin {
-
-    Mat4f RotationY(float angle) {
-        const float c = std::cos(angle);
-        const float s = std::sin(angle);
-
-        Mat4f m = Mat4f::Identity();
-        m[0,0] = c;   m[0,2] = s;
-        m[2,0] = -s;  m[2,2] = c;
-        return m;
-    }
-
-    std::vector<Vertex> VertexShader(
-        const std::vector<Vertex>& vertices,
+    ClipFlags VertexShader(
+        std::span<const Vertex> vertices,
+        std::vector<Vertex>& out,
+        const Mat4f& model,
         const Camera& camera,
         float aspectRatio)
     {
-        static std::vector<Vertex> clip;
-        clip.resize(vertices.size());
+        out.resize(vertices.size());
 
-        const float fovRadians = camera.FOVY * (3.14159265f / 180.0f);
+        const float fovRadians = camera.FOVY * (std::numbers::pi_v<float> / 180.0f);
+        const Mat4f view       = camera.getViewMatrix();
+        const Mat4f projection = Mat4f::Perspective(fovRadians, aspectRatio, camera.nearFrame, camera.farFrame);
 
-        const Mat4f view = camera.getViewMatrix();
-        const Mat4f projection = Mat4f::Perspective(
-            fovRadians,
-            aspectRatio,
-            camera.nearFrame,
-            camera.farFrame
-        );
+        const Mat4f viewModel = view * model;
+        const Mat4f mvp       = projection * viewModel;
 
-        const Mat4f viewProjection = projection * view;
+        std::atomic<uint32_t> andCode{ 0x3F }, orCode{ 0 };
 
-        size_t i = 0;
-        for (const auto& v : vertices) {
-			const static auto start = std::chrono::steady_clock::now();
-			const auto now = std::chrono::steady_clock::now();
-			const float elapsed = std::chrono::duration<float>(now - start).count();
-            Vertex transformed = v;
-            Mat4f model = RotationY(elapsed);
-            transformed.position = viewProjection * (model * v.position);
+        const auto transform = [&](size_t begin, size_t end) {
+            uint32_t a = 0x3F, _or = 0;
+            for (size_t i = begin; i < end; ++i) {
+                const Vertex& v = vertices[i];
+                Vertex& o = out[i];
+                o = v; // keeps uv etc.
 
-            const Vec4f normal4{
-                v.normal[0],
-                v.normal[1],
-                v.normal[2],
-                0.0f
-            };
+                o.position = mvp * v.position;
 
-            const Vec4f viewNormal = view * model * normal4;
+                const Vec4f n = viewModel * Vec4f{ v.normal[0], v.normal[1], v.normal[2], 0.0f };
+                o.normal = Vec3f{ n[0], n[1], n[2] }.Normalized();
 
-            transformed.normal = Vec3f{
-                viewNormal[0],
-                viewNormal[1],
-                viewNormal[2]
-            }.Normalized();
+                const uint32_t c = Outcode(o.position);
+                a &= c;
+                _or |= c;
+            }
+            andCode.fetch_and(a, std::memory_order_relaxed);
+            orCode.fetch_or(_or,  std::memory_order_relaxed);
+        };
 
-            clip[i++] = transformed;
+        constexpr size_t kChunk = 4096;
+        const size_t count  = vertices.size();
+        const size_t chunks = (count + kChunk - 1) / kChunk;
+        if (chunks <= 1) {
+            transform(0, count);
+        } else {
+            ParallelFor(GetPool(), chunks, [&](size_t c) {
+                transform(c * kChunk, std::min(count, (c + 1) * kChunk));
+            });
         }
 
-
-        return clip;
+        return { andCode.load(), orCode.load() };
     }
 }

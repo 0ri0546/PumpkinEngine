@@ -2,7 +2,6 @@
 
 #include <Renderer/Binning.hpp>
 #include <Renderer/RasterizerDetail.hpp>
-#include <Utils/StageTimer.hpp>
 #include <Utils/ThreadPool.hpp>
 
 #include <algorithm>
@@ -147,18 +146,14 @@ namespace Pumpkin {
         const S& shader, const Texture& texture) const {
         if (fb.width == 0 || fb.height == 0) return;
 
-        using Clock = StageTimer::Clock;
-
         const int w = fb.width;
         const int h = fb.height;
         const int tilesX = (w + kTileSize - 1) / kTileSize;
         const int tilesY = (h + kTileSize - 1) / kTileSize;
         const auto tileCount = static_cast<std::uint32_t>(tilesX * tilesY);
 
-        const auto t0 = Clock::now();
         BinData& bins = Detail::FrameBins();
         BinPrimitives(batch, tilesX, tilesY, bins);
-        const auto t1 = Clock::now();
 
         // Each thread grabs the next free tile until none are left.
         std::atomic<std::uint32_t> nextTile{ 0 };
@@ -174,8 +169,6 @@ namespace Pumpkin {
                 const int x0 = static_cast<int>(index % tilesX) * kTileSize;
                 const int y0 = static_cast<int>(index / tilesX) * kTileSize;
                 const Tile tile{ x0, y0, std::min(x0 + kTileSize, w), std::min(y0 + kTileSize, h) };
-
-                ClearTile(tile, depth, fb.pixels, fb.width);
 
                 // This tile's list is only touched by this thread: sort it in place.
                 SortItem* begin = bins.items.data() + bins.tileBegin[index];
@@ -193,11 +186,6 @@ namespace Pumpkin {
         };
 
         GetPool().Run(worker);
-        const auto t2 = Clock::now();
-
-        gTimer.binMs  += StageTimer::Ms(t0, t1);
-        gTimer.drawMs += StageTimer::Ms(t1, t2);
-        gTimer.EndFrame(batch.Size());
     }
 
     template <bool Transparent, FragmentShader_T S>

@@ -92,12 +92,13 @@ namespace Pumpkin {
                 0,
                 color
             );
+            this->color = { color.b, color.g, color.r, color.a };
             this->fontSize = size;
             TTF_SetFontSize(this->font, this->fontSize);
         }
         float fontSize;
         int x, y;
-        SDL_Color color;
+        SDL_Color color{};
         const char* text;
         SDL_Surface* surface;
         TTF_Font* font;

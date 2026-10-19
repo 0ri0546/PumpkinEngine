@@ -1,6 +1,5 @@
 #include <Renderer/PrimitiveAssembly.hpp>
 
-#include <Utils/StageTimer.hpp>
 #include <Utils/ThreadPool.hpp>
 
 #include <algorithm>
@@ -96,7 +95,6 @@ namespace Pumpkin {
 
     void AssemblePrimitives(std::span<const Vertex> screen, std::span<const std::uint32_t> indices,
         std::span<const Color> colors, const AssemblyDesc& desc, PrimitiveBatch& out) {
-        const auto start = StageTimer::Clock::now();
 
         const bool valid = indices.size() % 3 == 0
             && (colors.empty() || colors.size() >= screen.size())
@@ -119,6 +117,5 @@ namespace Pumpkin {
                 AssembleTriangle(screen, indices, colors, t, desc, dst);
         });
 
-        gTimer.buildMs += StageTimer::Ms(start, StageTimer::Clock::now());
     }
 }

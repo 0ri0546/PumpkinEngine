@@ -17,6 +17,7 @@
 #include <Renderer/Camera.hpp>
 #include <Renderer/Fragment.hpp>
 #include <Renderer/PrimitiveAssembly.hpp>
+#include <Renderer/Renderer.hpp>
 #include <Renderer/Shaders.hpp>
 #include <Renderer/Texture.hpp>
 #include <Renderer/Transform.hpp>
@@ -25,6 +26,10 @@
 #include <Utils/RenderProfiler.hpp>
 #include <Utils/Utils.hpp>
 #include <Utils/Events/Events.hpp>
+
+#include <Renderer/Passes/ClearPass.hpp>
+#include <Renderer/Passes/GeometryPass.hpp>
+#include <Renderer/Passes/TextPass.hpp>
 
 
 using namespace Pumpkin;
@@ -221,196 +226,14 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
     return mesh;
 }
 
-// Pipeline: vertex shader -> clipping -> primitive assembly -> rasterizer -> fragment shader
-static void DrawMesh(
-    Mesh& mesh,
-    const FrameBuffer& fb,
-    DepthBuffer& db,
-    const Camera& camera,
-    const Texture& texture)
-{
-    // 1. Vertex shader: calculates projection and transforms vertices into clip space
-    std::vector<Vertex> clip{};
-    {
-        Prof::Scope scope(Prof::Stage::Vertex);
-
-        clip = VertexShader(
-            mesh.vertices,
-            camera,
-            static_cast<float>(fb.width) / static_cast<float>(fb.height)
-        );
-    }
-
-    // 2. Vertex clipping
-    static std::vector<Vertex> clippedVertices;
-    static std::vector<uint32_t> clippedIndices;
-    static std::vector<Color> clippedColors;
-    static std::vector<Vec3f> clippedNormals;
-    {
-        Prof::Scope scope(Prof::Stage::Clip);
-
-        if (!ClipNearPlane(
-            clip,
-            mesh.indices,
-            mesh.colors,
-            clippedVertices,
-            clippedIndices,
-            clippedColors))
-        {
-            return;
-        }
-
-        const size_t count = clippedVertices.size();
-        clippedNormals.resize(count);
-        {
-            constexpr size_t kChunk = 16384;
-            const size_t chunks = (count + kChunk - 1) / kChunk;
-            const auto copyNormals = [&](size_t chunk) {
-                const size_t begin = chunk * kChunk;
-                const size_t end = std::min(count, begin + kChunk);
-                for (size_t i = begin; i < end; ++i)
-                    clippedNormals[i] = clippedVertices[i].normal;
-            };
-            if (chunks <= 1) copyNormals(0);
-            else ParallelFor(GetPool(), chunks, copyNormals);
-        }
-    }
-
-    // 3. Convert positions into screen space
-    static std::vector<Vertex> screen;
-    {
-        Prof::Scope scope(Prof::Stage::ToScreen);
-
-        if (!ToScreen(
-            clippedVertices,
-            screen,
-            fb.width,
-            fb.height))
-        {
-            return;
-        }
-    }
-
-    // 4. Primitive assembly
-    static PrimitiveBatch batch;
-    {
-        Prof::Scope scope(Prof::Stage::Assemble);
-
-        const AssemblyDesc desc{
-            .culling = CullMode::Back,
-            .width = fb.width,
-            .height = fb.height
-        };
-        AssemblePrimitives(
-            screen,
-            clippedIndices,
-            clippedColors,
-            desc,
-            batch
-        );
-    }
-
-    // 5. Fragment shader
-    {
-        Prof::Scope scope(Prof::Stage::Fragment);
-
-        BlinnPhongShader blinnPhongShader {
-            .normals = std::span<const Vec3f>{ clippedNormals },
-            .colors = std::span<const Color>{ clippedColors },
-            .lightDir = { -1.0f, 0.5f, 0.5f },
-            .lightCol = { 1.0f, 1.0f, 1.0f },
-            .viewDir = { 0.0f, 0.0f, 1.0f },
-            .ambient = 0.3f,
-            .specularStrength = 0.8f,
-            .shininess = 24.0f
-        };
-        FragmentShader(batch, fb, db, blinnPhongShader, texture);
-    }
-}
-
-static void DrawText(
-    FrameBuffer& fb,
-    Text& text)
-{
-    if (!fb.pixels || !text.text)
-        return;
-
-    if (!TTF_SetFontSize(text.font, text.fontSize))
-        return;
-
-    // Color input RGBA -> BGRA
-    text.color = { text.color.b, text.color.g, text.color.r, text.color.a };
-
-    if (!text.surface)
-        return;
-
-    if (!SDL_LockSurface(text.surface)) {
-        return;
-    }
-
-    const int startX = std::max(0, text.x);
-    const int startY = std::max(0, text.y);
-    const int endX = std::min(static_cast<int>(fb.width), text.x + text.surface->w);
-    const int endY = std::min(static_cast<int>(fb.height), text.y + text.surface->h);
-
-    const int bytesPerPixel = SDL_BYTESPERPIXEL(text.surface->format);
-    const auto* pixels = static_cast<const uint32_t*>(text.surface->pixels);
-
-    for (int py = startY; py < endY; ++py) {
-        for (int px = startX; px < endX; ++px) {
-            const int sx = px - text.x;
-            const int sy = py - text.y;
-
-            Uint32 pixel = pixels[sy * (text.surface->pitch / sizeof(uint32_t)) + sx];
-
-            Uint8 r, g, b, a;
-            SDL_GetRGBA(
-                pixel,
-                SDL_GetPixelFormatDetails(text.surface->format),
-                nullptr,
-                &r, &g, &b, &a
-            );
-
-            if (a == 0)
-                continue;
-
-            Uint32& dst = fb.pixels[py * fb.width + px];
-
-            const Uint8 dr = (dst >> 24) & 0xFF;
-            const Uint8 dg = (dst >> 16) & 0xFF;
-            const Uint8 db = (dst >> 8) & 0xFF;
-            const Uint8 da = (dst) & 0xFF;
-
-            const float alpha = a / 255.0f;
-
-            const Uint8 outR = static_cast<Uint8>(r * alpha + dr * (1.0f - alpha));
-            const Uint8 outG = static_cast<Uint8>(g * alpha + dg * (1.0f - alpha));
-            const Uint8 outB = static_cast<Uint8>(b * alpha + db * (1.0f - alpha));
-            const Uint8 outA = static_cast<Uint8>(a + da * (1.0f - alpha));
-
-            const auto* dstFormat = SDL_GetPixelFormatDetails(
-                SDL_PIXELFORMAT_ABGR8888
-            );
-
-            dst = SDL_MapRGBA(
-                dstFormat,
-                nullptr,
-                outR, outG, outB, outA
-            );
-        }
-    }
-
-    SDL_UnlockSurface(text.surface);
-}
-
 // ---------------------------------------------------------------------------
 // Window / buffers
 // ---------------------------------------------------------------------------
 
 static void SetMultiResWindowIcon(SDL_Window* window) {
-    SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Pumpkin@32.png");
-    SDL_Surface* icon16   = SDL_LoadPNG("Assets/Pumpkin@16.png");
-    SDL_Surface* icon64   = SDL_LoadPNG("Assets/Pumpkin@64.png");
+    SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Icons/Pumpkin@32.png");
+    SDL_Surface* icon16   = SDL_LoadPNG("Assets/Icons/Pumpkin@16.png");
+    SDL_Surface* icon64   = SDL_LoadPNG("Assets/Icons/Pumpkin@64.png");
 
     if (!baseIcon || !icon16 || !icon64) {
         SDL_Log("Couldn't load icons : %s", SDL_GetError());
@@ -434,7 +257,8 @@ static void SetMultiResWindowIcon(SDL_Window* window) {
     SDL_DestroySurface(baseIcon);
 }
 
-static void ResizeBuffers(FrameBuffer& fb, DepthBuffer& db, int width, int height) {
+static void ResizeBuffers(Renderer& renderer, FrameBuffer& fb, DepthBuffer& db, int width, int height) {
+    renderer.Resize(width, height);
     fb.width  = width;
     fb.height = height;
     db.width  = width;
@@ -465,27 +289,15 @@ int main() {
     }
 
     if (!TTF_Init()) {
-        std::println(stderr, "Erreur d'initialisation : {}", SDL_GetError());
-        exit(EXIT_FAILURE);
-    }
-    TTF_Font* font = nullptr;
-    float ptsize = 14.0f;
-
-    font = TTF_OpenFont("C:/Windows/Fonts/Arial.ttf", ptsize);
-    if (font == NULL) {
-        SDL_Log("Couldn't load %g pt font from %s: %s",
-            ptsize, "C:/Windows/Fonts/Arial.ttf", SDL_GetError());
-    }
-    else {
-        std::println("It works bebou");
+        std::println(stderr, "SDL_ttf couldn't initialize! SDL Error: {}", SDL_GetError());
+        return 1;
     }
 
-    Text text(font, "hello world bebou", 50.0f, { 255, 0, 0, 255 }, 20, 20);
-
+    Renderer renderer{};
     {
         SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-        ResizeBuffers(*fb, *db, mode->h - 200, mode->h - 200);
+        ResizeBuffers(renderer, *fb, *db, mode->h - 200, mode->h - 200);
         if (mode->refresh_rate != 0.0f) {
             targetFps = kUncappedFps;//static_cast<std::int32_t>(mode->refresh_rate);
         }
@@ -504,11 +316,41 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh cow = LoadMesh("Assets/Spot.obj");
-    Texture texture;
-    if (!LoadTexture(texture, "Assets/Textures/SpotTexture.png")) {
+    // Objects creation
+    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj   = LoadMesh("Assets/Models/VikingRoom.obj");
+    Mat4f cowModel = Mat4f::Identity(),                  vkRoomModel = Mat4f::Identity();
+    Texture cowTexture;
+    if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
     }
+    Texture vkRoomTexture;
+    if (!LoadTexture(vkRoomTexture, "Assets/Textures/VikingRoom.png")) {
+        std::println("Impossible to load texture.");
+    }
+
+    // Font loading / text creation
+    TTF_Font* font = nullptr;
+    constexpr float fontSize = 14.0f;
+
+    font = TTF_OpenFont("Assets/Fonts/Arial.ttf", fontSize);
+    if (font == nullptr) {
+        SDL_Log("Couldn't load %g pt font from %s: %s",
+            fontSize, "Assets/Fonts/Arial.ttf", SDL_GetError());
+    } else {
+        std::println("It works bebou");
+    }
+
+    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
+
+    // Creating render passes and scene
+    renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
+    renderer.AddPass<GeometryPass>();
+    renderer.AddPass<TextPass>(text);
+
+    std::array scene{
+        DrawItem { &cowObj, &cowModel, &cowTexture },
+        DrawItem { &vkRoomObj, &vkRoomModel, &vkRoomTexture }
+    };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
     auto nextFrame = std::chrono::steady_clock::now();
@@ -531,7 +373,7 @@ int main() {
                 SDL_UpdateWindowSurface(window);
                 surface = SDL_GetWindowSurface(window);
                 surface->format = SDL_PIXELFORMAT_RGBA32;
-                ResizeBuffers(*fb, *db, event.window.data1, event.window.data2);
+                ResizeBuffers(renderer, *fb, *db, event.window.data1, event.window.data2);
                 break;
 
             default:
@@ -554,9 +396,8 @@ int main() {
         Pumpkin::updateCameraMovement(camera, deltaTime);
 
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
-
-        DrawMesh(cow, *fb, *db, camera, texture);
-        DrawText(*fb, text);
+        RenderContext ctx{ *fb, *db, camera, deltaTime, scene };
+        renderer.Render(ctx);
 
         SDL_UpdateWindowSurface(window);
 

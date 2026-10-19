@@ -6,8 +6,9 @@
 #include <cstddef>
 #include <print>
 #include <string_view>
+#include <vector>
 
-namespace Prof {
+namespace Pumpkin::Prof {
     using Clock = std::chrono::steady_clock;
 
     enum Stage : std::size_t { Vertex, Clip, ToScreen, Assemble, Fragment, Count };
@@ -15,46 +16,110 @@ namespace Prof {
         "Vertex shader", "Clipping", "To screen space", "Primitive assembly", "Fragment shader"
     };
 
+    struct Entry {
+        std::string_view name;
+        double total = 0.0;   // ms, summed over the window
+        double worst = 0.0;   // ms, worst single call
+    };
+
     struct Stats {
-        std::array<double, Count> total{};   // ms, summed over the window
-        std::array<double, Count> worst{};   // ms, worst single call
+        std::vector<Entry> entries;
+        double topLevel = 0.0;
         unsigned frames = 0;
+        int depth = 0;
         bool warmedUp = false;
+        Clock::time_point windowStart{};
+
+        Stats() {
+            for (const auto n : kNames) entries.push_back(Entry{ .name = n });
+        }
+
+        std::size_t Find(std::string_view name) {
+            for (std::size_t i = 0; i < entries.size(); ++i)
+                if (entries[i].name == name) return i;
+            entries.push_back(Entry{ .name = name });
+            return entries.size() - 1;
+        }
+
+        void Reset() {
+            for (auto& e : entries) e.total = e.worst = 0.0;
+            topLevel = 0.0;
+            frames = 0;
+            windowStart = Clock::now();
+        }
     };
     inline Stats g;
 
     class Scope {
     public:
-        explicit Scope(Stage s) : m_stage(s), m_t0(Clock::now()) {}
+        explicit Scope(std::string_view name)
+            : m_index(g.Find(name)), m_depth(g.depth++), m_t0(Clock::now()) {}
+
+        explicit Scope(Stage s) : Scope(kNames[s]) {}
+
+        Scope(const Scope&) = delete;
+        Scope& operator=(const Scope&) = delete;
+
         ~Scope() {
+            --g.depth;
             if (!g.warmedUp) return;
+
             const double ms = std::chrono::duration<double, std::milli>(Clock::now() - m_t0).count();
-            g.total[m_stage] += ms;
-            g.worst[m_stage] = std::max(g.worst[m_stage], ms);
+            Entry& e = g.entries[m_index];
+            e.total += ms;
+            e.worst = std::max(e.worst, ms);
+            if (m_depth == 0) g.topLevel += ms;
         }
+
     private:
-        Stage m_stage;
+        std::size_t       m_index;
+        int               m_depth;
         Clock::time_point m_t0;
     };
 
     // Called at the end of the main loop
-    inline void EndFrame(unsigned interval = 120) {
-        if (!g.warmedUp) { g.warmedUp = true; return; }   // drop frame 0
-        if (++g.frames < interval) return;
-
-        double sum = 0;
-        for (double t : g.total) sum += t;
-
-        std::println("{:<20} {:>10} {:>10} {:>7}", "stage", "avg ms", "worst ms", "share");
-        std::println("{:-<20} {:->10} {:->10} {:->7}", "", "", "", "");
-        for (std::size_t i = 0; i < Count; ++i) {
-            std::println("{:<20} {:>10.3f} {:>10.3f} {:>6.1f}%",
-                kNames[i], g.total[i] / g.frames, g.worst[i],
-                sum > 0 ? 100.0 * g.total[i] / sum : 0.0);
+    inline void EndFrame(Clock::duration interval = std::chrono::seconds(1)) {
+        if (!g.warmedUp) { // drop frame 0
+            g.warmedUp = true;
+            g.windowStart = Clock::now();
+            return;
         }
-        std::println("{:<20} {:>10.3f}  ({:.0f} fps-equivalent)\n",
-            "total", sum / g.frames, 1000.0 * g.frames / sum);
 
-        g = Stats{ .warmedUp = true };
+        ++g.frames;
+        const auto elapsed = Clock::now() - g.windowStart;
+        if (elapsed < interval) return;
+
+        const double seconds = std::chrono::duration<double>(elapsed).count();
+
+        std::size_t width = 20;
+        std::size_t i = 0;
+        for (const auto& e : g.entries) width = std::max(width, e.name.size());
+
+        auto printDashes = [&width] {
+            std::println("{:-<{}} {:->10} {:->10} {:->7}", "", width, "", "", "");
+        };
+
+        std::println("{:<{}} {:>10} {:>10} {:>7}", "Stage", width, "avg ms", "worst ms", "share");
+        printDashes();
+        for (const auto& e : g.entries) {
+            if (i++ == Count) {
+                printDashes();
+                std::println("{:<{}} {:>10} {:>10} {:>7}", "Render pass", width, "avg ms", "worst ms", "share");
+                printDashes();
+            }
+            std::println("{:<{}} {:>10.3f} {:>10.3f} {:>6.1f}%",
+                e.name, width,
+                e.total / g.frames, e.worst,
+                g.topLevel > 0 ? 100.0 * e.total / g.topLevel : 0.0);
+        }
+
+        const double avgMs = g.topLevel / g.frames;
+        printDashes();
+        std::println("{:<{}} {:>10.3f}  ({:.0f} fps-equivalent)",
+            "total", width, avgMs, avgMs > 0 ? 1000.0 / avgMs : 0.0);
+        std::println("{:<{}} {:>10.1f} fps over {:.2f}s\n",
+            "measured", width, g.frames / seconds, seconds);
+
+        g.Reset();
     }
 }
