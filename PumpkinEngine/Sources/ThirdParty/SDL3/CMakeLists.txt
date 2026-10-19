@@ -5,9 +5,10 @@ if(WIN32)
     set(SDL3_LIB_DIR "${CMAKE_SOURCE_DIR}/PumpkinEngine/Libraries/SDL3/lib/x64")
     target_link_libraries(SDL3Lib INTERFACE "${SDL3_LIB_DIR}/SDL3.lib" "${SDL3_LIB_DIR}/SDL3_ttf.dll.a")
 elseif(UNIX)
-    # On Unix, easiest way is just to install libsdl3-devel package
+    # On Unix, easiest way is just to install libsdl3-devel / libsdl3-ttf-devel packages or compile yourself
     find_package(SDL3 REQUIRED)
-    target_link_libraries(SDL3Lib INTERFACE SDL3_ttf::SDL3_ttf-static SDL3::SDL3)
+    find_package(SDL3_ttf REQUIRED)
+    target_link_libraries(SDL3Lib INTERFACE SDL3_ttf::SDL3_ttf SDL3::SDL3)
 else()
     message(FATAL_ERROR "Unsupported platform!")
 endif()
