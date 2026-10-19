@@ -336,7 +336,7 @@ namespace Pumpkin {
                                 mix(Channel<16>(old), sr),
                                 mix(Channel<8>(old), sg),
                                 mix(Channel<0>(old), sb),
-                                V::set1(255.0f));
+                                mix(Channel<24>(old), sa));
                             StoreMasked(pixelRow + x, packed, mask);
                         }
                     }
@@ -391,13 +391,16 @@ namespace Pumpkin {
                     } else {
                         const std::uint32_t pixel = pixelRow[x];
                         const float a = std::clamp(sa / 255.0f, 0.0f, 1.0f);
+                        const auto da = static_cast<float>((pixel >> 24) & 0xFF);
                         const auto dr = static_cast<float>((pixel >> 16) & 0xFF);
                         const auto dg = static_cast<float>((pixel >> 8) & 0xFF);
                         const auto dB = static_cast<float>(pixel & 0xFF);
                         pixelRow[x] = PackColor(
                             ToByte(Blend(AlphaBlend, dr, sr, a) + 0.5f),
                             ToByte(Blend(AlphaBlend, dg, sg, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, dB, sb, a) + 0.5f));
+                            ToByte(Blend(AlphaBlend, dB, sb, a) + 0.5f),
+                            ToByte(Blend(AlphaBlend, da, sa, a) + 0.5f)
+                        );
                     }
                 }
 
