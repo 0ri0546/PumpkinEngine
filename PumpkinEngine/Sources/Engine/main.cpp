@@ -9,6 +9,7 @@
 #include <thread>
 #include <unordered_map>
 #include <vector>
+#include <cstring>
 
 #include <Math/Mat.h>
 #include <SDL3/SDL.h>
@@ -327,6 +328,81 @@ static void DrawMesh(
     }
 }
 
+static void DrawText(
+    FrameBuffer& fb,
+    Text& text)
+{
+    if (!fb.pixels || !text.text)
+        return;
+
+    if (!TTF_SetFontSize(text.font, text.fontSize))
+        return;
+
+    // Color input RGBA -> BGRA
+    text.color = { text.color.b, text.color.g, text.color.r, text.color.a };
+
+    if (!text.surface)
+        return;
+
+    if (!SDL_LockSurface(text.surface)) {
+        return;
+    }
+
+    const int startX = std::max(0, text.x);
+    const int startY = std::max(0, text.y);
+    const int endX = std::min(static_cast<int>(fb.width), text.x + text.surface->w);
+    const int endY = std::min(static_cast<int>(fb.height), text.y + text.surface->h);
+
+    const int bytesPerPixel = SDL_BYTESPERPIXEL(text.surface->format);
+    const auto* pixels = static_cast<const uint32_t*>(text.surface->pixels);
+
+    for (int py = startY; py < endY; ++py) {
+        for (int px = startX; px < endX; ++px) {
+            const int sx = px - text.x;
+            const int sy = py - text.y;
+
+            Uint32 pixel = pixels[sy * (text.surface->pitch / sizeof(uint32_t)) + sx];
+
+            Uint8 r, g, b, a;
+            SDL_GetRGBA(
+                pixel,
+                SDL_GetPixelFormatDetails(text.surface->format),
+                nullptr,
+                &r, &g, &b, &a
+            );
+
+            if (a == 0)
+                continue;
+
+            Uint32& dst = fb.pixels[py * fb.width + px];
+
+            const Uint8 dr = (dst >> 24) & 0xFF;
+            const Uint8 dg = (dst >> 16) & 0xFF;
+            const Uint8 db = (dst >> 8) & 0xFF;
+            const Uint8 da = (dst) & 0xFF;
+
+            const float alpha = a / 255.0f;
+
+            const Uint8 outR = static_cast<Uint8>(r * alpha + dr * (1.0f - alpha));
+            const Uint8 outG = static_cast<Uint8>(g * alpha + dg * (1.0f - alpha));
+            const Uint8 outB = static_cast<Uint8>(b * alpha + db * (1.0f - alpha));
+            const Uint8 outA = static_cast<Uint8>(a + da * (1.0f - alpha));
+
+            const auto* dstFormat = SDL_GetPixelFormatDetails(
+                SDL_PIXELFORMAT_ABGR8888
+            );
+
+            dst = SDL_MapRGBA(
+                dstFormat,
+                nullptr,
+                outR, outG, outB, outA
+            );
+        }
+    }
+
+    SDL_UnlockSurface(text.surface);
+}
+
 // ---------------------------------------------------------------------------
 // Window / buffers
 // ---------------------------------------------------------------------------
@@ -376,6 +452,7 @@ static bool WindowNotFocused(SDL_Window* window) {
 int main() {
     const auto fb = std::make_unique<FrameBuffer>();
     const auto db = std::make_unique<DepthBuffer>();
+
     uint64_t targetFps = kDefaultTargetFps;
 
     Camera camera;
@@ -386,6 +463,24 @@ int main() {
         std::println("SDL could not initialize! SDL Error: {}", SDL_GetError());
         return 1;
     }
+
+    if (!TTF_Init()) {
+        std::println(stderr, "Erreur d'initialisation : {}", SDL_GetError());
+        exit(EXIT_FAILURE);
+    }
+    TTF_Font* font = nullptr;
+    float ptsize = 14.0f;
+
+    font = TTF_OpenFont("C:/Windows/Fonts/Arial.ttf", ptsize);
+    if (font == NULL) {
+        SDL_Log("Couldn't load %g pt font from %s: %s",
+            ptsize, "C:/Windows/Fonts/Arial.ttf", SDL_GetError());
+    }
+    else {
+        std::println("It works bebou");
+    }
+
+    Text text(font, "hello world bebou", 50.0f, { 255, 0, 0, 255 }, 20, 20);
 
     {
         SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
@@ -461,6 +556,8 @@ int main() {
         fb->pixels = static_cast<uint32_t*>(surface->pixels);
 
         DrawMesh(cow, *fb, *db, camera, texture);
+        DrawText(*fb, text);
+
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.
@@ -475,6 +572,9 @@ int main() {
         Prof::EndFrame();
         std::this_thread::sleep_until(nextFrame);
     }
+
+    TTF_CloseFont(font);
+    TTF_Quit();
 
     SDL_DestroyWindow(window);
     SDL_Quit();

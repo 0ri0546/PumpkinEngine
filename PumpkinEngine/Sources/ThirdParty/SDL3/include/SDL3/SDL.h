@@ -84,6 +84,7 @@
 #include <SDL3/SDL_timer.h>
 #include <SDL3/SDL_tray.h>
 #include <SDL3/SDL_touch.h>
+#include <SDL3/SDL_ttf.h>
 #include <SDL3/SDL_version.h>
 #include <SDL3/SDL_video.h>
 #include <SDL3/SDL_oldnames.h>
