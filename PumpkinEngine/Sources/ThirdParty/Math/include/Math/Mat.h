@@ -56,6 +56,10 @@ public:
     static inline constexpr size_type Cols();
     static inline constexpr size_type Size();
 
+    template <Numeral U = T, std::size_t R = RowCount, std::size_t C = ColCount>
+        requires(R == RowCount && C == ColCount && R == 4 && C == 4)
+    inline constexpr void SetRotation(const Quaternion<U>& rotation);
+
     template <Numeral U>
     inline constexpr bool operator==(const Mat<U, RowCount, ColCount, Layout>& other) const;
 

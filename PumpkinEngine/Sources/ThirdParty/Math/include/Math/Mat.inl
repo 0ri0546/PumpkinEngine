@@ -366,10 +366,10 @@ template <Numeral U, std::size_t R, std::size_t C>
     requires(R == RowCount && C == ColCount && R == 4 && C == 4)
 inline constexpr Mat<T, RowCount, ColCount, Layout>
 Mat<T, RowCount, ColCount, Layout>::Rotate(const Quaternion<U>& rotation) {
-    const U x = rotation[0];
-    const U y = rotation[1];
-    const U z = rotation[2];
-    const U w = rotation[3];
+    const U x = rotation.X();
+    const U y = rotation.Y();
+    const U z = rotation.Z();
+    const U w = rotation.W();
 
     const U xx = x * x;
     const U yy = y * y;
@@ -396,6 +396,40 @@ Mat<T, RowCount, ColCount, Layout>::Rotate(const Quaternion<U>& rotation) {
     result[2, 2] = static_cast<T>(U{ 1 } - U{ 2 } *(xx + yy));
 
     return result;
+}
+
+template <Numeral T, std::size_t RowCount, std::size_t ColCount, typename Layout>
+template <Numeral U, std::size_t R, std::size_t C>
+    requires(R == RowCount && C == ColCount && R == 4 && C == 4)
+inline constexpr void Mat<T, RowCount, ColCount, Layout>::SetRotation(const Quaternion<U>& rotation) {
+        const U x = rotation.X();
+        const U y = rotation.Y();
+        const U z = rotation.Z();
+        const U w = rotation.W();
+
+        const U xx = x * x;
+        const U yy = y * y;
+        const U zz = z * z;
+        const U xy = x * y;
+        const U xz = x * z;
+        const U yz = y * z;
+        const U wx = w * x;
+        const U wy = w * y;
+        const U wz = w * z;
+
+        Mat& res = *this;
+
+        res[0, 0] = static_cast<T>((U{ 1 } - U{ 2 } *(yy + zz)));
+        res[1, 0] = static_cast<T>((U{ 2 } *(xy + wz)));
+        res[2, 0] = static_cast<T>((U{ 2 } *(xz - wy)));
+
+        res[0, 1] = static_cast<T>((U{ 2 } *(xy - wz)));
+        res[1, 1] = static_cast<T>((U{ 1 } - U{ 2 } *(xx + zz)));
+        res[2, 1] = static_cast<T>((U{ 2 } *(yz + wx)));
+
+        res[0, 2] = static_cast<T>((U{ 2 } *(xz + wy)));
+        res[1, 2] = static_cast<T>((U{ 2 } *(yz - wx)));
+        res[2, 2] = static_cast<T>((U{ 1 } - U{ 2 } *(xx + yy)));
 }
 
 template <Numeral T, std::size_t RowCount, std::size_t ColCount, typename Layout>
