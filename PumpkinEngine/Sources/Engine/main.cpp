@@ -297,7 +297,7 @@ int main() {
     {
         SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-        ResizeBuffers(renderer, *fb, *db, mode->h - 200, mode->h - 200);
+        ResizeBuffers(renderer, *fb, *db, mode->w / 2, mode->h / 2);
         if (mode->refresh_rate != 0.0f) {
             targetFps = kUncappedFps;//static_cast<std::int32_t>(mode->refresh_rate);
         }
@@ -319,6 +319,8 @@ int main() {
     // Objects creation
     Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj   = LoadMesh("Assets/Models/VikingRoom.obj");
     Mat4f cowModel = Mat4f::Identity(),                  vkRoomModel = Mat4f::Identity();
+    vkRoomModel = vkRoomModel.Translate({ 1.0f, 0.0f, 1.0f });
+    vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), std::sin(std::numbers::pi_v<float>), 0.0f, 1.0f }.Normalized());
     Texture cowTexture;
     if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
