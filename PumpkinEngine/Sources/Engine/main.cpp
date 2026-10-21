@@ -30,7 +30,9 @@
 #include <Renderer/Passes/ClearPass.hpp>
 #include <Renderer/Passes/GeometryPass.hpp>
 #include <Renderer/Passes/TextPass.hpp>
-
+#include <Renderer/Particles.hpp>
+#include <Renderer/ParticleSystem.hpp>
+#include <Renderer/Passes/ParticlePass.hpp>
 
 using namespace Pumpkin;
 
@@ -319,6 +321,7 @@ int main() {
     // Objects creation
     Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj   = LoadMesh("Assets/Models/VikingRoom.obj");
     Mat4f cowModel = Mat4f::Identity(),                  vkRoomModel = Mat4f::Identity();
+    cowModel = cowModel.Translate({ -1.0f, 0.0f, 1.0f });
     vkRoomModel = vkRoomModel.Translate({ 1.0f, 0.0f, 1.0f });
     vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), std::sin(std::numbers::pi_v<float>), 0.0f, 1.0f }.Normalized());
     Texture cowTexture;
@@ -344,11 +347,26 @@ int main() {
 
     Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
 
+    Particles particleSettings{};
+    particleSettings.pos = { 0.0f, 0.0f, 0.0f };
+    particleSettings.dir = { 1.0f, 1.0f, 0.0f };
+    particleSettings.maxParticles = 200;
+    particleSettings.minDuration = 0.5f;
+    particleSettings.maxDuration = 3.0f;
+    particleSettings.speedMin = 0.7f;
+    particleSettings.speedMax = 1.3f;
+    particleSettings.gravity = Vec3f{ 0.0f, -9.81f, 0.0f };
+    particleSettings.initialVelocity = Vec3f{ 0.0f, 2.0f, 0.0f };
+
+    ParticleSystem particleSystem(particleSettings);
+    ParticlePass particlePass(particleSystem);
+
     // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
     renderer.AddPass<GeometryPass>();
+    renderer.AddPass<ParticlePass>(particleSystem);
     renderer.AddPass<TextPass>(text);
-
+    
     std::array scene{
         DrawItem { &cowObj, &cowModel, &cowTexture },
         DrawItem { &vkRoomObj, &vkRoomModel, &vkRoomTexture }
