@@ -7,6 +7,7 @@
 #include <type_traits>
 #include <algorithm>
 #include <cmath>
+#include <numbers>
 
 namespace Pumpkin {
     /// @brief What the rasterizer knows about one covered pixel. This is the shader's input.
@@ -127,6 +128,94 @@ namespace Pumpkin {
                 std::clamp(lightCol[2] * (color.b * diffuseLighting + 255.0f * spec), 0.0f, 255.0f),
                 color.a
             };
+        }
+    };
+
+    /// @brief Building blocks of the Cook-Torrance BRDF (GGX / Smith / Schlick).
+    namespace PBR {
+        inline constexpr float Pi = std::numbers::pi_v<float>;
+
+        /// Normal distribution (GGX / Trowbridge-Reitz): how many microfacets face the half vector.
+        [[nodiscard]] inline float DistributionGGX(float nDotH, float alpha) {
+            const float a2 = alpha * alpha;
+            const float d = nDotH * nDotH * (a2 - 1.0f) + 1.0f;
+            return a2 / (Pi * d * d + 1e-7f);
+        }
+
+        /// Geometry term for one direction (Schlick-GGX): microfacet self-shadowing.
+        [[nodiscard]] inline float GeometrySchlickGGX(float nDotX, float k) {
+            return nDotX / (nDotX * (1.0f - k) + k);
+        }
+
+        /// Smith: shadowing from the view direction times masking from the light direction.
+        [[nodiscard]] inline float GeometrySmith(float nDotV, float nDotL, float roughness) {
+            const float r = roughness + 1.0f;
+            const float k = (r * r) / 8.0f;       // k for direct lighting
+            return GeometrySchlickGGX(nDotV, k) * GeometrySchlickGGX(nDotL, k);
+        }
+
+        /// Fresnel (Schlick): reflectance goes up at grazing angles.
+        [[nodiscard]] inline float FresnelSchlick(float cosTheta, float f0) {
+            const float m = 1.0f - cosTheta;
+            const float m2 = m * m;
+            return f0 + (1.0f - f0) * (m2 * m2 * m);
+        }
+    }
+
+    /// @brief Metallic / roughness PBR with one directional light (Cook-Torrance specular + Lambert diffuse).
+    struct PBRShader {
+        std::span<const Vec3f> normals;
+        std::span<const Color> colors;               // base color (albedo)
+
+        Vec3f lightDir{ 0.0f, 1.0f, 0.0f };          // points toward the light
+        Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
+        Vec3f viewDir{ 0.0f, 0.0f, 1.0f };           // points toward the camera
+
+        float lightIntensity = 3.0f;
+        float ambient = 0.1f;
+        float metallic = 0.0f;                       // 0 = dielectric, 1 = metal
+        float roughness = 0.5f;                      // 0 = mirror, 1 = fully rough
+
+        [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
+            const Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f l = lightDir.Normalized();
+            const Vec3f v = viewDir.Normalized();
+            const Vec3f h = (l + v).Normalized();
+
+            const float nDotL = std::max(0.0f, Dot(n, l));
+            const float nDotV = std::max(1e-4f, Dot(n, v));
+            const float nDotH = std::max(0.0f, Dot(n, h));
+            const float vDotH = std::max(0.0f, Dot(v, h));
+
+            const float rough = std::clamp(roughness, 0.045f, 1.0f);   // avoids a zero-size highlight
+            const float alpha = rough * rough;
+
+            const PixelOutput color = VertexColorShader{ colors }(f);
+            const float albedo[3] = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f };
+
+            // Specular term (same for all channels, only F changes per channel)
+            const float D = PBR::DistributionGGX(nDotH, alpha);
+            const float G = PBR::GeometrySmith(nDotV, nDotL, rough);
+
+            float out[3];
+            for (int i = 0; i < 3; ++i) {
+                // Base reflectivity: 0.04 for dielectrics, the albedo for metals.
+                const float f0 = 0.04f + (albedo[i] - 0.04f) * metallic;
+                const float F = PBR::FresnelSchlick(vDotH, f0);
+
+                const float specular = (D * G * F) / (4.0f * nDotV * nDotL + 1e-4f);
+
+                // Energy conservation: what is reflected is not diffused. Metals have no diffuse.
+                const float kD = (1.0f - F) * (1.0f - metallic);
+                const float diffuse = kD * albedo[i] / PBR::Pi;
+
+                const float direct = (diffuse + specular) * lightCol[i] * lightIntensity * nDotL;
+                const float ambientTerm = ambient * albedo[i] * (1.0f - metallic);
+
+                out[i] = std::clamp((direct + ambientTerm) * 255.0f, 0.0f, 255.0f);
+            }
+
+            return { out[0], out[1], out[2], color.a };
         }
     };
 }

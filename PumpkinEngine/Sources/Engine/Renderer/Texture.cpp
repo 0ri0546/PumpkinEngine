@@ -1,4 +1,3 @@
-
 #include "Texture.hpp"
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -65,7 +64,7 @@ namespace Pumpkin {
         return true;
     }
 
-    uint32_t SampleTexture(
+    Color SampleTexture(
         const Texture& texture,
         float u,
         float v
@@ -73,14 +72,14 @@ namespace Pumpkin {
         if (texture.width <= 0 ||
             texture.height <= 0 ||
             texture.pixels.empty()) {
-            return 0xFFFFFFFF;
+            return Color{ 255, 255, 255, 255 };
         }
 
-        // R�p�tition de la texture
+        // Repetition de la texture
         u -= std::floor(u);
         v -= std::floor(v);
 
-        // Conversion UV vers coordonn�es pixel
+        // Conversion UV vers coordonnees pixel
         const int x = std::clamp(
             static_cast<int>(u * texture.width),
             0,
@@ -95,8 +94,12 @@ namespace Pumpkin {
 
         const size_t index =
             static_cast<size_t>(y) * texture.width + x;
-
-        return texture.pixels[index];
+        const auto pixel = texture.pixels[index];
+        return Color{ 
+            .r = static_cast<uint8_t>((pixel >> 24) & 0xFF), 
+            .g = static_cast<uint8_t>((pixel >> 16) & 0xFF), 
+            .b = static_cast<uint8_t>((pixel >> 8) & 0xFF), 
+            .a = static_cast<uint8_t>(pixel & 0xFF) };
     }
 
 }

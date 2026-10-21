@@ -14,6 +14,9 @@ namespace Pumpkin {
         Mesh*          mesh;
         Mat4f*         model;
         const Texture* texture;
+		float ao        = 0.0f;
+		float metalness = 0.0f;
+		float roughness = 0.0f;
     };
 
     struct RenderContext {

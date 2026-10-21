@@ -1,6 +1,7 @@
 #include "GeometryPass.hpp"
 
 #include <Renderer/Shaders.hpp>
+#include <Renderer/Texture.hpp>
 #include <Renderer/Transform.hpp>
 #include <Utils/RenderProfiler.hpp>
 #include <Utils/ThreadPool.hpp>
@@ -65,7 +66,7 @@ namespace Pumpkin {
         {
             Prof::Scope scope(Prof::Stage::Assemble);
             const AssemblyDesc desc{
-                .culling = CullMode::None,
+                .culling = CullMode::Back,
                 .width   = ctx.fb.width,
                 .height  = ctx.fb.height
             };
@@ -75,16 +76,17 @@ namespace Pumpkin {
         // 5. Fragment shader
         {
             Prof::Scope scope(Prof::Stage::Fragment);
-            BlinnPhongShader shader{
-                .normals = m_clippedNormals,
-                .colors  = colors,
-                .lightDir = { -1.0f, 0.5f, 0.5f },
-                .lightCol = { 1.0f, 1.0f, 1.0f },
-                .viewDir  = { 0.0f, 0.0f, 1.0f },
-                .ambient = 0.3f,
-                .specularStrength = 0.8f,
-                .shininess = 24.0f
-            };
+			PBRShader shader{
+				.normals = m_clippedNormals,
+				.colors = colors,
+				.lightDir = { -1.0f, 0.5f, 0.5f },
+				.lightCol = { 1.0f, 1.0f, 1.0f },
+				.viewDir = { 0.0f, 0.0f, 1.0f },
+				.lightIntensity = 3.0f,
+				.ambient = item.ao,
+				.metallic = item.metalness,
+				.roughness = item.roughness
+			};
             FragmentShader(m_batch, ctx.fb, ctx.db, shader, item.texture ? *item.texture : Texture{});
         }
     }

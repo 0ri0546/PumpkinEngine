@@ -350,8 +350,8 @@ int main() {
     renderer.AddPass<TextPass>(text);
 
     std::array scene{
-        DrawItem { &cowObj, &cowModel, &cowTexture },
-        DrawItem { &vkRoomObj, &vkRoomModel, &vkRoomTexture }
+        DrawItem { &cowObj, &cowModel, &cowTexture, 0.1f, 0.7f, 0.3f },
+        DrawItem { &vkRoomObj, &vkRoomModel, &vkRoomTexture } // nothing to test
     };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);

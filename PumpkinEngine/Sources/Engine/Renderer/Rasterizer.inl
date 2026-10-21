@@ -365,11 +365,11 @@ namespace Pumpkin {
                             sa *= texel.a / 255.0f;
                         }
                         else {
-                            const std::uint32_t texel = SampleTexture(texture, u * inv, v * inv);
-                            sr *= static_cast<float>((texel >> 24) & 0xFF) / 255.0f;
-                            sg *= static_cast<float>((texel >> 16) & 0xFF) / 255.0f;
-                            sb *= static_cast<float>((texel >> 8) & 0xFF) / 255.0f;
-                            sa *= static_cast<float>(texel & 0xFF) / 255.0f;
+                            const Color texel = SampleTexture(texture, u * inv, v * inv);
+                            sr *= static_cast<float>(texel.r & 0xFF) / 255.0f;
+                            sg *= static_cast<float>(texel.g & 0xFF) / 255.0f;
+                            sb *= static_cast<float>(texel.b & 0xFF) / 255.0f;
+                            sa *= static_cast<float>(texel.a & 0xFF) / 255.0f;
                         }
                     }
 
