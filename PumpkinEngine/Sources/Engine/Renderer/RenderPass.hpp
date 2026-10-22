@@ -13,8 +13,12 @@ namespace Pumpkin {
     struct DrawItem {
         Mesh*          mesh;
         Mat4f*         model;
-        const Texture* texture;
-		float ao        = 0.0f;
+        const Texture* albedo;
+        const Texture* normalMap = nullptr;
+        const Texture* metalMap = nullptr;
+        const Texture* roughMap = nullptr;
+        const Texture* ambientMap = nullptr;
+		float ambient   = 0.0f;
 		float metalness = 0.0f;
 		float roughness = 0.0f;
     };

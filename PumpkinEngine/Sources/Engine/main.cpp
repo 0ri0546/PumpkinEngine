@@ -320,7 +320,7 @@ int main() {
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
     // Objects creation
-    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj   = LoadMesh("Assets/Models/VikingRoom.obj");
+    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj");
     Mat4f cowModel = Mat4f::Identity(),                  vkRoomModel = Mat4f::Identity();
     vkRoomModel = vkRoomModel.Translate({ 1.0f, 0.0f, 1.0f });
     vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), std::sin(std::numbers::pi_v<float>), 0.0f, 1.0f }.Normalized());
@@ -328,8 +328,20 @@ int main() {
     if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
     }
-    Texture vkRoomTexture;
-    if (!LoadTexture(vkRoomTexture, "Assets/Textures/VikingRoom.png")) {
+    Texture vkRoomAlbedo;
+    if (!LoadTexture(vkRoomAlbedo, "Assets/Textures/VikingRoom/Albedo.png")) {
+        std::println("Impossible to load texture.");
+    }
+    Texture vkRoomMetalness;
+    if (!LoadTexture(vkRoomMetalness, "Assets/Textures/VikingRoom/Metallic.png")) {
+        std::println("Impossible to load texture.");
+    }
+    Texture vkRoomRoughness;
+    if (!LoadTexture(vkRoomRoughness, "Assets/Textures/VikingRoom/Roughness.png")) {
+        std::println("Impossible to load texture.");
+    }
+    Texture vkRoomAmbient;
+    if (!LoadTexture(vkRoomAmbient, "Assets/Textures/VikingRoom/AO.png")) {
         std::println("Impossible to load texture.");
     }
 
@@ -346,6 +358,10 @@ int main() {
     }
 
     Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
+	text.
+        SetColor(SDL_Color{ 255, 0, 255, 255 }).
+        SetSize(50.0f).
+        Build();
 
     // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
@@ -353,8 +369,22 @@ int main() {
     renderer.AddPass<TextPass>(text);
 
     std::array scene{
-        DrawItem { &cowObj, &cowModel, &cowTexture, 0.1f, 0.7f, 0.3f },
-        DrawItem { &vkRoomObj, &vkRoomModel, &vkRoomTexture } // nothing to test
+        DrawItem { 
+            .mesh = &cowObj,
+            .model = &cowModel,
+            .albedo = &cowTexture,
+            .ambient = 0.5f,
+            .metalness = 0.7f,
+            .roughness = 0.3f
+        },
+        DrawItem { 
+            .mesh = &vkRoomObj,
+            .model = &vkRoomModel,
+            .albedo = &vkRoomAlbedo,
+            .metalMap = &vkRoomMetalness,
+            .roughMap = &vkRoomRoughness,
+            .ambientMap = &vkRoomAmbient
+        } // nothing to test
     };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);

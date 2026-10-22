@@ -143,7 +143,7 @@ namespace Pumpkin {
 
     template <FragmentShader_T S>
     void Rasterizer::Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db,
-        const S& shader, const Texture& texture) const {
+        const S& shader, const DrawItem& item) const {
         if (fb.width == 0 || fb.height == 0) return;
 
         const int w = fb.width;
@@ -179,8 +179,8 @@ namespace Pumpkin {
 
                 for (const SortItem* it = begin; it != end; ++it) {
                     const Primitive& p = batch[it->index];
-                    if (p.transparent) DrawInTile<true>(p, it->index, tile, depth, fb.pixels, fb.width, shader, texture);
-                    else               DrawInTile<false>(p, it->index, tile, depth, fb.pixels, fb.width, shader, texture);
+                    if (p.transparent) DrawInTile<true>(p, it->index, tile, depth, fb.pixels, fb.width, shader, item);
+                    else               DrawInTile<false>(p, it->index, tile, depth, fb.pixels, fb.width, shader, item);
                 }
             }
         };
@@ -190,7 +190,7 @@ namespace Pumpkin {
 
     template <bool Transparent, FragmentShader_T S>
     void Rasterizer::DrawInTile(const Primitive& t, std::uint32_t primitiveId, const Tile& tile,
-        float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader, const Texture& texture) const {
+        float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader, const DrawItem& item) const {
         using namespace Detail;
 
         constexpr float nearPlane = 0.01f;
@@ -215,7 +215,11 @@ namespace Pumpkin {
         frag.i1 = t.i1;
         frag.i2 = t.i2;
         frag.primitiveId = primitiveId;
-        const bool hasTexture = texture.width > 0 && texture.height > 0 && !texture.pixels.empty();
+        const bool hasAlbedo = item.albedo && item.albedo->width > 0 && item.albedo->height > 0 && !item.albedo->pixels.empty();
+        const bool hasNormal = item.normalMap && item.normalMap->width > 0 && item.normalMap->height > 0 && !item.normalMap->pixels.empty();
+        const bool hasMetallic = item.metalMap && item.metalMap->width > 0 && item.metalMap->height > 0 && !item.metalMap->pixels.empty();
+        const bool hasRoughness = item.roughMap && item.roughMap->width > 0 && item.roughMap->height > 0 && !item.roughMap->pixels.empty();
+        const bool hasAmbient = item.ambientMap && item.ambientMap->width > 0 && item.ambientMap->height > 0 && !item.ambientMap->pixels.empty();
 
         for (int y = ya; y < yb; ++y) {
             const auto row = static_cast<float>(y - t.y0);
@@ -238,6 +242,14 @@ namespace Pumpkin {
             int x = t.x0 + static_cast<int>(lo);
             const int end = t.x0 + static_cast<int>(hi);
             frag.y = y;
+
+            alignas(32) float aR[kLanes], aG[kLanes], aB[kLanes], aA[kLanes];
+            alignas(32) float nX[kLanes], nY[kLanes], nZ[kLanes];
+            alignas(32) float mt[kLanes], rg[kLanes], ao[kLanes];
+            std::fill_n(aR, kLanes, 1.0f); std::fill_n(aG, kLanes, 1.0f);
+            std::fill_n(aB, kLanes, 1.0f); std::fill_n(aA, kLanes, 1.0f);
+            std::fill_n(nX, kLanes, 0.0f); std::fill_n(nY, kLanes, 0.0f); std::fill_n(nZ, kLanes, 1.0f);
+            std::fill_n(mt, kLanes, 1.0f); std::fill_n(rg, kLanes, 1.0f); std::fill_n(ao, kLanes, 1.0f);
 
             // ---- SIMD part: 8 pixels per iteration ----
             if (x + kLanes <= end) {
@@ -270,43 +282,52 @@ namespace Pumpkin {
                         V::store(b2, V::mul(V::mul(vw2, kv2), inv));
                         V::store(zs, vz);
 
+                        const V::type tu = V::mul(vu, inv), tv = V::mul(vv, inv);
+                        const V::type two = V::set1(2.0f), one1 = V::set1(1.0f);
+
+                        auto chan = [&]<int S>(const TexelSIMD & t) { return V::mul(Channel<S>(t), inv255); };
+
+                        if (hasAlbedo) {
+                            const TexelSIMD t = SampleTexture8(item.albedo->pixels.data(), item.albedo->width, item.albedo->height, tu, tv);   // or your bilinear path
+                            const V::type r = chan.template operator()<24>(t);
+                            const V::type g = chan.template operator()<16>(t);
+                            const V::type b = chan.template operator()<8>(t);
+                            V::store(aR, V::mul(r, r));        // sRGB -> linear
+                            V::store(aG, V::mul(g, g));
+                            V::store(aB, V::mul(b, b));
+                            V::store(aA, chan.template operator()<0>(t));   // alpha stays linear
+                        }
+                        if (hasNormal) {
+                            const TexelSIMD t = SampleTexture8(item.normalMap->pixels.data(), item.normalMap->width, item.normalMap->height, tu, tv);
+                            V::store(nX, V::sub(V::mul(chan.template operator()<24>(t), two), one1));
+                            V::store(nY, V::sub(V::mul(chan.template operator()<16>(t), two), one1));
+                            V::store(nZ, V::sub(V::mul(chan.template operator()<8>(t), two), one1));
+                        }
+                        if (hasMetallic)  V::store(mt, chan.template operator()<24>(SampleTexture8(item.metalMap->pixels.data(), item.metalMap->width, item.metalMap->height, tu, tv)));
+                        if (hasRoughness) V::store(rg, chan.template operator()<24>(SampleTexture8(item.roughMap->pixels.data(), item.roughMap->width, item.roughMap->height, tu, tv)));
+                        if (hasAmbient)   V::store(ao, chan.template operator()<24>(SampleTexture8(item.ambientMap->pixels.data(), item.ambientMap->width, item.ambientMap->height, tu, tv)));
+
                         // The shader is scalar: call it for the lanes that passed.
                         for (int lane = 0; lane < kLanes; ++lane) {
                             if (!(bits & (1 << lane))) continue;
                             frag.x = x + lane;
                             frag.depth = zs[lane];
-                            frag.b0 = b0[lane];
-                            frag.b1 = b1[lane];
-                            frag.b2 = b2[lane];
+                            frag.b0 = b0[lane]; frag.b1 = b1[lane]; frag.b2 = b2[lane];
+
+                            frag.albedo[0] = aR[lane]; frag.albedo[1] = aG[lane];
+                            frag.albedo[2] = aB[lane]; frag.albedo[3] = aA[lane];
+                            frag.nx = nX[lane]; frag.ny = nY[lane]; frag.nz = nZ[lane];
+                            frag.metallic = mt[lane]; frag.roughness = rg[lane]; frag.ao = ao[lane];
+
                             const PixelOutput c = shader(frag);
-                            outR[lane] = c.r;
-                            outG[lane] = c.g;
-                            outB[lane] = c.b;
-                            outA[lane] = c.a;
+                            outR[lane] = c.r; outG[lane] = c.g; outB[lane] = c.b; outA[lane] = c.a;
                         }
 
                         V::type sr = V::load(outR);
                         V::type sg = V::load(outG);
                         V::type sb = V::load(outB);
                         V::type sa = V::load(outA);
-
-                        if (hasTexture) {
-                            if (BilinearFiltering) {
-                                const Texel8 texel = SampleTexture8Bilinear(texture.pixels.data(), texture.width, texture.height, V::mul(vu, inv), V::mul(vv, inv));
-                                sr = V::mul(sr, V::mul(texel.r, inv255));
-                                sg = V::mul(sg, V::mul(texel.g, inv255));
-                                sb = V::mul(sb, V::mul(texel.b, inv255));
-                                sa = V::mul(sa, V::mul(texel.a, inv255));
-                            }
-                            else {
-                                const TexelSIMD texel = SampleTexture8(texture.pixels.data(), texture.width, texture.height, V::mul(vu, inv), V::mul(vv, inv));
-                                sr = V::mul(sr, V::mul(Channel<24>(texel), inv255));
-                                sg = V::mul(sg, V::mul(Channel<16>(texel), inv255));
-                                sb = V::mul(sb, V::mul(Channel<8>(texel), inv255));
-                                sa = V::mul(sa, V::mul(Channel<0>(texel), inv255));
-                            }
-                        }
-
+                        
                         if constexpr (!Transparent) {
                             V::store(depthRow + x, V::select(oldDepth, vz, mask)); // only opaque writes depth
                             StoreMasked(pixelRow + x, PackBGRA(sr, sg, sb, V::set1(255.0f)), mask);
@@ -348,35 +369,59 @@ namespace Pumpkin {
             for (; x < end; ++x) {
                 if (DepthPass(DepthTest, z, depthRow[x])) {
                     const float inv = 1.0f / k;
+                    const float tu = u * inv, tv = v * inv;
+
                     frag.x = x;
                     frag.depth = z;
                     frag.b0 = w0 * t.kv[0] * inv;
                     frag.b1 = w1 * t.kv[1] * inv;
                     frag.b2 = w2 * t.kv[2] * inv;
-                    const PixelOutput c = shader(frag);
 
-                    float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
-                    if (hasTexture) {
+                    // Neutral defaults: a missing map costs nothing.
+                    frag.albedo[0] = frag.albedo[1] = frag.albedo[2] = frag.albedo[3] = 1.0f;
+                    frag.nx = 0.0f; frag.ny = 0.0f; frag.nz = 1.0f;
+                    frag.metallic = 1.0f; frag.roughness = 1.0f; frag.ao = 1.0f;
+
+                    if (hasAlbedo) {
+                        float r, g, b, a;
                         if (BilinearFiltering) {
-                            const TexelF texel = SampleTextureBilinear(texture, u * inv, v * inv);
-                            sr *= texel.r / 255.0f;
-                            sg *= texel.g / 255.0f;
-                            sb *= texel.b / 255.0f;
-                            sa *= texel.a / 255.0f;
+                            const TexelF texel = SampleTextureBilinear(*item.albedo, tu, tv);
+                            r = texel.r / 255.0f; g = texel.g / 255.0f;
+                            b = texel.b / 255.0f; a = texel.a / 255.0f;
                         }
                         else {
-                            const Color texel = SampleTexture(texture, u * inv, v * inv);
-                            sr *= static_cast<float>(texel.r & 0xFF) / 255.0f;
-                            sg *= static_cast<float>(texel.g & 0xFF) / 255.0f;
-                            sb *= static_cast<float>(texel.b & 0xFF) / 255.0f;
-                            sa *= static_cast<float>(texel.a & 0xFF) / 255.0f;
+                            const Color texel = SampleTexture(*item.albedo, tu, tv);
+                            r = static_cast<float>(texel.r & 0xFF) / 255.0f;
+                            g = static_cast<float>(texel.g & 0xFF) / 255.0f;
+                            b = static_cast<float>(texel.b & 0xFF) / 255.0f;
+                            a = static_cast<float>(texel.a & 0xFF) / 255.0f;
                         }
+                        frag.albedo[0] = r * r;      // sRGB -> linear (same gamma 2 as the SIMD path)
+                        frag.albedo[1] = g * g;
+                        frag.albedo[2] = b * b;
+                        frag.albedo[3] = a;          // alpha stays linear
                     }
+                    if (hasNormal) {
+                        const Color n = SampleTexture(*item.normalMap, tu, tv);
+                        frag.nx = static_cast<float>(n.r & 0xFF) / 255.0f * 2.0f - 1.0f;
+                        frag.ny = static_cast<float>(n.g & 0xFF) / 255.0f * 2.0f - 1.0f;
+                        frag.nz = static_cast<float>(n.b & 0xFF) / 255.0f * 2.0f - 1.0f;
+                    }
+                    if (hasMetallic)
+                        frag.metallic = static_cast<float>(SampleTexture(*item.metalMap, tu, tv).r & 0xFF) / 255.0f;
+                    if (hasRoughness)
+                        frag.roughness = static_cast<float>(SampleTexture(*item.roughMap, tu, tv).r & 0xFF) / 255.0f;
+                    if (hasAmbient)
+                        frag.ao = static_cast<float>(SampleTexture(*item.ambientMap, tu, tv).r & 0xFF) / 255.0f;
+
+                    const PixelOutput c = shader(frag);
+                    const float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
 
                     if constexpr (!Transparent) {
                         depthRow[x] = z;
                         pixelRow[x] = PackColor(ToByte(sr), ToByte(sg), ToByte(sb));
-                    } else {
+                    }
+                    else {
                         const std::uint32_t pixel = pixelRow[x];
                         const float a = std::clamp(sa / 255.0f, 0.0f, 1.0f);
                         const auto da = static_cast<float>((pixel >> 24) & 0xFF);
@@ -387,8 +432,7 @@ namespace Pumpkin {
                             ToByte(Blend(AlphaBlend, dr, sr, a) + 0.5f),
                             ToByte(Blend(AlphaBlend, dg, sg, a) + 0.5f),
                             ToByte(Blend(AlphaBlend, dB, sb, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, da, sa, a) + 0.5f)
-                        );
+                            ToByte(Blend(AlphaBlend, da, sa, a) + 0.5f));
                     }
                 }
 

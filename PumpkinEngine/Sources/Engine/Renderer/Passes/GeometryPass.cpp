@@ -78,11 +78,31 @@ namespace Pumpkin {
             Prof::Scope scope(Prof::Stage::Fragment);
 			PBRShader shader{
 				.normals = m_clippedNormals,
-				.colors = colors,
-			    .metallic = item.metalness,
-			    .roughness = item.roughness,
+				.colors = colors
 			};
-            FragmentShader(m_batch, ctx.fb, ctx.db, shader, item.texture ? *item.texture : Texture{});
+            PBRShaderMaps shader2{
+                .normals = m_clippedNormals,
+                .colors = colors,
+				.ambient = item.ambient,
+				.metallic = item.metalness,
+				.roughness = item.roughness
+            };
+			if (item.metalMap != nullptr) {
+                FragmentShader(
+                    m_batch,
+                    ctx.fb, ctx.db,
+                    shader2,
+                    item
+                );
+			}
+            else {
+                FragmentShader(
+                    m_batch,
+                    ctx.fb, ctx.db,
+                    shader2,
+                    item
+                );
+            }
         }
     }
 }
