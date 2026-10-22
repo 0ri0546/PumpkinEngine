@@ -12,7 +12,7 @@ namespace Pumpkin {
                 DrawMesh(item, ctx);
         }
     private:
-        void DrawMesh(DrawItem&, const RenderContext&);
+        void DrawMesh(const DrawItem&, const RenderContext&);
 
         std::vector<Vertex>   m_clip, m_clippedVertices, m_screen;
         std::vector<uint32_t> m_clippedIndices;

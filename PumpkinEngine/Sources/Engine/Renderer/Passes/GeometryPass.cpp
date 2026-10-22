@@ -8,7 +8,7 @@
 
 namespace Pumpkin {
     // Pipeline: vertex shader -> clipping -> primitive assembly -> rasterizer -> fragment shader
-    void GeometryPass::DrawMesh(DrawItem& item, const RenderContext& ctx) {
+    void GeometryPass::DrawMesh(const DrawItem& item, const RenderContext& ctx) {
         // 1. Vertex shader
         ClipFlags flags;
         {
@@ -66,7 +66,7 @@ namespace Pumpkin {
         {
             Prof::Scope scope(Prof::Stage::Assemble);
             const AssemblyDesc desc{
-                .culling = CullMode::Back,
+                .culling = CullMode::None,
                 .width   = ctx.fb.width,
                 .height  = ctx.fb.height
             };
@@ -76,33 +76,16 @@ namespace Pumpkin {
         // 5. Fragment shader
         {
             Prof::Scope scope(Prof::Stage::Fragment);
-			PBRShader shader{
-				.normals = m_clippedNormals,
-				.colors = colors
-			};
-            PBRShaderMaps shader2{
+            PBRShaderMaps pbrMaps{
                 .normals = m_clippedNormals,
-                .colors = colors,
-				.ambient = item.ambient,
-				.metallic = item.metalness,
-				.roughness = item.roughness
+                .colors = colors
             };
-			if (item.metalMap != nullptr) {
-                FragmentShader(
-                    m_batch,
-                    ctx.fb, ctx.db,
-                    shader2,
-                    item
-                );
-			}
-            else {
-                FragmentShader(
-                    m_batch,
-                    ctx.fb, ctx.db,
-                    shader2,
-                    item
-                );
-            }
+            FragmentShader(
+                m_batch,
+                ctx.fb, ctx.db,
+                pbrMaps,
+                item
+            );
         }
     }
 }

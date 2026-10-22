@@ -174,7 +174,7 @@ namespace Pumpkin {
 
         Vec3f lightDir{ 0.0f, 0.0f, 1.0f };          // points toward the light
         Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
-        Vec3f viewDir{ 0.0f, 0.0f, 0.0f };           // points toward the camera
+        Vec3f viewDir{ 0.0f, 0.0f, 1.0f };           // points toward the camera
 
         float lightIntensity = 3.0f;
         float ambient = 0.5f;
@@ -196,7 +196,11 @@ namespace Pumpkin {
             const float alpha = rough * rough;
 
             const PixelOutput color = VertexColorShader{ colors }(f);
-            const float albedo[3] = { color.r / 255.0f, color.g / 255.0f, color.b / 255.0f };
+            const float albedo[3] = {
+                color.r / 255.0f * f.albedo[0],     // vertex color * texture, both linear
+                color.g / 255.0f * f.albedo[1],
+                color.b / 255.0f * f.albedo[2]
+            };
 
             // Specular term (same for all channels, only F changes per channel)
             const float D = PBR::DistributionGGX(nDotH, alpha);
@@ -220,7 +224,7 @@ namespace Pumpkin {
                 out[i] = std::clamp((direct + ambientTerm) * 255.0f, 0.0f, 255.0f);
             }
 
-            return { out[0], out[1], out[2], color.a };
+            return { out[0], out[1], out[2], color.a * f.albedo[3] };
         }
     };
 
@@ -228,12 +232,12 @@ namespace Pumpkin {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;               // base color (albedo)
 
-        Vec3f lightDir{ 0.0f, 0.0f, 1.0f };          // points toward the light
+        Vec3f lightDir{ 1.0f, 1.0f, 1.0f };          // points toward the light
         Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
-        Vec3f viewDir{ 0.0f, 0.0f, 0.0f };           // points toward the camera
+        Vec3f viewDir{ 0.0f, 0.0f, 1.0f };           // points toward the camera
 
         float lightIntensity = 3.0f;
-        float ambient = 0.5f;
+        float ambient = 0.2f;
         float metallic = 0.5f;                       // 0 = dielectric, 1 = metal
         float roughness = 0.3f;                      // 0 = mirror, 1 = fully rough
 

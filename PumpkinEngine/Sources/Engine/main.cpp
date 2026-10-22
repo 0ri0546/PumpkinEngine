@@ -321,9 +321,9 @@ int main() {
 
     // Objects creation
     Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj");
-    Mat4f cowModel = Mat4f::Identity(),                  vkRoomModel = Mat4f::Identity();
-    vkRoomModel = vkRoomModel.Translate({ 1.0f, 0.0f, 1.0f });
-    vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), std::sin(std::numbers::pi_v<float>), 0.0f, 1.0f }.Normalized());
+    Mat4f cowModel = Mat4f::Identity();
+    Mat4f vkRoomModel = Mat4f::Translate({ 1.0f, 0.0f, 1.0f });
+    vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
     Texture cowTexture;
     if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
@@ -373,9 +373,9 @@ int main() {
             .mesh = &cowObj,
             .model = &cowModel,
             .albedo = &cowTexture,
-            .ambient = 0.5f,
             .metalness = 0.7f,
-            .roughness = 0.3f
+            .roughness = 0.3f,
+            .ambient = 0.5f
         },
         DrawItem { 
             .mesh = &vkRoomObj,
@@ -384,7 +384,7 @@ int main() {
             .metalMap = &vkRoomMetalness,
             .roughMap = &vkRoomRoughness,
             .ambientMap = &vkRoomAmbient
-        } // nothing to test
+        }
     };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);

@@ -41,6 +41,9 @@ namespace Pumpkin {
         // Four filtered channels (0..255 floats) for 8 pixels.
         struct Texel8 { V::type r, g, b, a; };
 
+        // The four neighbouring texels of 8 pixels, plus the fractional position between them.
+        struct BilinearTaps { TexelSIMD t00, t10, t01, t11; V::type tx, ty; };
+
         template <int Shift>
         [[nodiscard]] inline V::type BilerpChannel(TexelSIMD t00, TexelSIMD t10, TexelSIMD t01, TexelSIMD t11,
             V::type tx, V::type ty) {
@@ -52,8 +55,8 @@ namespace Pumpkin {
             return lerp(top, bottom, ty);
         }
 
-        // Bilinear: 4 neighbouring texels blended by the fractional position. Repeat wrapping.
-        [[nodiscard]] inline Texel8 SampleTexture8Bilinear(const std::uint32_t* texels, int width, int height,
+        // Repeat wrapping, 4 gathers. Shared by every bilinear sampler below.
+        [[nodiscard]] inline BilinearTaps GatherBilinear8(const std::uint32_t* texels, int width, int height,
             V::type u, V::type v) {
             u = V::sub(u, _mm256_floor_ps(u));
             v = V::sub(v, _mm256_floor_ps(v));
@@ -92,23 +95,40 @@ namespace Pumpkin {
             // The four nearest texels, see:
             // https://github.com/rodrigogq/3d-cpu-engine/tree/main/chapter-12-clipping-filtering#128--bilinear-filtering
             const int* base = reinterpret_cast<const int*>(texels);
-            const TexelSIMD t00 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x0), 4);
-            const TexelSIMD t10 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x1), 4);
-            const TexelSIMD t01 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x0), 4);
-            const TexelSIMD t11 = _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x1), 4);
-
             return {
-                BilerpChannel<24>(t00, t10, t01, t11, tx, ty),
-                BilerpChannel<16>(t00, t10, t01, t11, tx, ty),
-                BilerpChannel<8>(t00, t10, t01, t11, tx, ty),
-                BilerpChannel<0>(t00, t10, t01, t11, tx, ty)
+                _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x0), 4), // t00
+                _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x1), 4), // t01
+                _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x0), 4), // t10
+                _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x1), 4), // t11
+                tx, ty
             };
         }
 
-        // Scalar version, same maths, for the 0..7 pixel tail.
-        struct TexelF { float r, g, b, a; };
+        // Bilinear, all four channels (albedo, normal map).
+        [[nodiscard]] inline Texel8 SampleTexture8Bilinear(const std::uint32_t* texels, int width, int height,
+            V::type u, V::type v) {
+            const BilinearTaps k = GatherBilinear8(texels, width, height, u, v);
+            return {
+                BilerpChannel<24>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
+                BilerpChannel<16>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
+                BilerpChannel<8>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
+                BilerpChannel<0>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty)
+            };
+        }
 
-        [[nodiscard]] inline TexelF SampleTextureBilinear(const Texture& tex, float u, float v) {
+        // Bilinear, one channel only (metallic, roughness, AO): skips the work for the other three.
+        template <int Shift>
+        [[nodiscard]] inline V::type SampleTexture8BilinearChannel(const std::uint32_t* texels, int width, int height,
+            V::type u, V::type v) {
+            const BilinearTaps k = GatherBilinear8(texels, width, height, u, v);
+            return BilerpChannel<Shift>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty);
+        }
+
+        // Scalar versions, same maths, for the 0..7 pixel tail.
+        struct TexelF { float r, g, b, a; };
+        struct BilinearTapsF { std::uint32_t t00, t10, t01, t11; float tx, ty; };
+
+        [[nodiscard]] inline BilinearTapsF GatherBilinear(const Texture& tex, float u, float v) {
             const int w = tex.width;
             const int h = tex.height;
 
@@ -118,7 +138,6 @@ namespace Pumpkin {
             const float fx = u * static_cast<float>(w) - 0.5f;
             const float fy = (1.0f - v) * static_cast<float>(h) - 0.5f;
             const float flx = std::floor(fx), fly = std::floor(fy);
-            const float tx = fx - flx, ty = fy - fly;
 
             int x0 = static_cast<int>(flx), y0 = static_cast<int>(fly);
             int x1 = x0 + 1, y1 = y0 + 1;
@@ -128,16 +147,25 @@ namespace Pumpkin {
             if (y1 >= h) y1 = 0;
 
             const std::uint32_t* p = tex.pixels.data();
-            const std::uint32_t t00 = p[y0 * w + x0], t10 = p[y0 * w + x1];
-            const std::uint32_t t01 = p[y1 * w + x0], t11 = p[y1 * w + x1];
+            return { p[y0 * w + x0], p[y0 * w + x1], p[y1 * w + x0], p[y1 * w + x1], fx - flx, fy - fly };
+        }
 
-            const auto ch = [&](const int shift) {
-                const auto f = [&](const std::uint32_t t) { return static_cast<float>((t >> shift) & 0xFF); };
-                const float top    = f(t00) + (f(t10) - f(t00)) * tx;
-                const float bottom = f(t01) + (f(t11) - f(t01)) * tx;
-                return top + (bottom - top) * ty;
-            };
-            return { ch(24), ch(16), ch(8), ch(0) };
+        template <int Shift>
+        [[nodiscard]] inline float BilerpChannelF(const BilinearTapsF& k) {
+            const auto f = [](const std::uint32_t t) { return static_cast<float>((t >> Shift) & 0xFF); };
+            const float top    = f(k.t00) + (f(k.t10) - f(k.t00)) * k.tx;
+            const float bottom = f(k.t01) + (f(k.t11) - f(k.t01)) * k.tx;
+            return top + (bottom - top) * k.ty;
+        }
+
+        [[nodiscard]] inline TexelF SampleTextureBilinear(const Texture& tex, float u, float v) {
+            const BilinearTapsF k = GatherBilinear(tex, u, v);
+            return { BilerpChannelF<24>(k), BilerpChannelF<16>(k), BilerpChannelF<8>(k), BilerpChannelF<0>(k) };
+        }
+
+        template <int Shift>
+        [[nodiscard]] inline float SampleTextureBilinearChannel(const Texture& tex, float u, float v) {
+            return BilerpChannelF<Shift>(GatherBilinear(tex, u, v));
         }
     }
 
@@ -287,25 +315,58 @@ namespace Pumpkin {
 
                         auto chan = [&]<int S>(const TexelSIMD & t) { return V::mul(Channel<S>(t), inv255); };
 
+                        // One channel (the first one) of a map, 0..1: used by metallic, roughness and AO.
+                        const auto sampleR = [&](const Texture& tex) {
+                            if (BilinearFiltering)
+                                return V::mul(SampleTexture8BilinearChannel<24>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
+                            return chan.template operator()<24>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
+                        };
+
                         if (hasAlbedo) {
-                            const TexelSIMD t = SampleTexture8(item.albedo->pixels.data(), item.albedo->width, item.albedo->height, tu, tv);   // or your bilinear path
-                            const V::type r = chan.template operator()<24>(t);
-                            const V::type g = chan.template operator()<16>(t);
-                            const V::type b = chan.template operator()<8>(t);
-                            V::store(aR, V::mul(r, r));        // sRGB -> linear
-                            V::store(aG, V::mul(g, g));
-                            V::store(aB, V::mul(b, b));
-                            V::store(aA, chan.template operator()<0>(t));   // alpha stays linear
+                            if (BilinearFiltering) {
+                                const Texel8 bl = SampleTexture8Bilinear(item.albedo->pixels.data(), item.albedo->width, item.albedo->height, tu, tv);
+                                const V::type r = V::mul(bl.r, inv255);
+                                const V::type g = V::mul(bl.g, inv255);
+                                const V::type b = V::mul(bl.b, inv255);
+                                V::store(aR, V::mul(r, r)); // sRGB -> linear
+                                V::store(aG, V::mul(g, g));
+                                V::store(aB, V::mul(b, b));
+                                V::store(aA, V::mul(bl.a, inv255)); // alpha stays linear
+                            }
+                            else {
+                                const TexelSIMD t = SampleTexture8(item.albedo->pixels.data(), item.albedo->width, item.albedo->height, tu, tv);
+                                const V::type r = chan.template operator()<24>(t);
+                                const V::type g = chan.template operator()<16>(t);
+                                const V::type b = chan.template operator()<8>(t);
+                                V::store(aR, V::mul(r, r));
+                                V::store(aG, V::mul(g, g));
+                                V::store(aB, V::mul(b, b));
+                                V::store(aA, chan.template operator()<0>(t));
+                            }
                         }
                         if (hasNormal) {
-                            const TexelSIMD t = SampleTexture8(item.normalMap->pixels.data(), item.normalMap->width, item.normalMap->height, tu, tv);
-                            V::store(nX, V::sub(V::mul(chan.template operator()<24>(t), two), one1));
-                            V::store(nY, V::sub(V::mul(chan.template operator()<16>(t), two), one1));
-                            V::store(nZ, V::sub(V::mul(chan.template operator()<8>(t), two), one1));
+                            if (BilinearFiltering) {
+                                const Texel8 bl = SampleTexture8Bilinear(item.normalMap->pixels.data(), item.normalMap->width, item.normalMap->height, tu, tv);
+                                const V::type nx = V::sub(V::mul(V::mul(bl.r, inv255), two), one1);
+                                const V::type ny = V::sub(V::mul(V::mul(bl.g, inv255), two), one1);
+                                const V::type nz = V::sub(V::mul(V::mul(bl.b, inv255), two), one1);
+
+                                const V::type len2 = V::add(V::add(V::mul(nx, nx), V::mul(ny, ny)), V::mul(nz, nz));
+                                const V::type invLen = V::div(one1, _mm256_sqrt_ps(_mm256_max_ps(len2, V::set1(1e-8f))));
+                                V::store(nX, V::mul(nx, invLen));
+                                V::store(nY, V::mul(ny, invLen));
+                                V::store(nZ, V::mul(nz, invLen));
+                            }
+                            else {
+                                const TexelSIMD t = SampleTexture8(item.normalMap->pixels.data(), item.normalMap->width, item.normalMap->height, tu, tv);
+                                V::store(nX, V::sub(V::mul(chan.template operator()<24>(t), two), one1));
+                                V::store(nY, V::sub(V::mul(chan.template operator()<16>(t), two), one1));
+                                V::store(nZ, V::sub(V::mul(chan.template operator()<8>(t), two), one1));
+                            }
                         }
-                        if (hasMetallic)  V::store(mt, chan.template operator()<24>(SampleTexture8(item.metalMap->pixels.data(), item.metalMap->width, item.metalMap->height, tu, tv)));
-                        if (hasRoughness) V::store(rg, chan.template operator()<24>(SampleTexture8(item.roughMap->pixels.data(), item.roughMap->width, item.roughMap->height, tu, tv)));
-                        if (hasAmbient)   V::store(ao, chan.template operator()<24>(SampleTexture8(item.ambientMap->pixels.data(), item.ambientMap->width, item.ambientMap->height, tu, tv)));
+                        if (hasMetallic)  V::store(mt, sampleR(*item.metalMap));
+                        if (hasRoughness) V::store(rg, sampleR(*item.roughMap));
+                        if (hasAmbient)   V::store(ao, sampleR(*item.ambientMap));
 
                         // The shader is scalar: call it for the lanes that passed.
                         for (int lane = 0; lane < kLanes; ++lane) {
@@ -327,7 +388,7 @@ namespace Pumpkin {
                         V::type sg = V::load(outG);
                         V::type sb = V::load(outB);
                         V::type sa = V::load(outA);
-                        
+
                         if constexpr (!Transparent) {
                             V::store(depthRow + x, V::select(oldDepth, vz, mask)); // only opaque writes depth
                             StoreMasked(pixelRow + x, PackBGRA(sr, sg, sb, V::set1(255.0f)), mask);
@@ -382,6 +443,13 @@ namespace Pumpkin {
                     frag.nx = 0.0f; frag.ny = 0.0f; frag.nz = 1.0f;
                     frag.metallic = 1.0f; frag.roughness = 1.0f; frag.ao = 1.0f;
 
+                    // One channel (the first one) of a map, 0..1: used by metallic, roughness and AO.
+                    const auto sampleR = [&](const Texture& tex) {
+                        if (BilinearFiltering)
+                            return SampleTextureBilinearChannel<24>(tex, tu, tv) / 255.0f;
+                        return static_cast<float>(SampleTexture(tex, tu, tv).r & 0xFF) / 255.0f;
+                    };
+
                     if (hasAlbedo) {
                         float r, g, b, a;
                         if (BilinearFiltering) {
@@ -396,23 +464,33 @@ namespace Pumpkin {
                             b = static_cast<float>(texel.b & 0xFF) / 255.0f;
                             a = static_cast<float>(texel.a & 0xFF) / 255.0f;
                         }
-                        frag.albedo[0] = r * r;      // sRGB -> linear (same gamma 2 as the SIMD path)
+                        frag.albedo[0] = r * r; // sRGB -> linear
                         frag.albedo[1] = g * g;
                         frag.albedo[2] = b * b;
-                        frag.albedo[3] = a;          // alpha stays linear
+                        frag.albedo[3] = a; // alpha stays linear
                     }
                     if (hasNormal) {
-                        const Color n = SampleTexture(*item.normalMap, tu, tv);
-                        frag.nx = static_cast<float>(n.r & 0xFF) / 255.0f * 2.0f - 1.0f;
-                        frag.ny = static_cast<float>(n.g & 0xFF) / 255.0f * 2.0f - 1.0f;
-                        frag.nz = static_cast<float>(n.b & 0xFF) / 255.0f * 2.0f - 1.0f;
+                        float nx, ny, nz;
+                        if (BilinearFiltering) {
+                            const TexelF n = SampleTextureBilinear(*item.normalMap, tu, tv);
+                            nx = n.r / 255.0f * 2.0f - 1.0f;
+                            ny = n.g / 255.0f * 2.0f - 1.0f;
+                            nz = n.b / 255.0f * 2.0f - 1.0f;
+
+                            const float invLen = 1.0f / std::sqrt(std::max(nx * nx + ny * ny + nz * nz, 1e-8f));
+                            nx *= invLen; ny *= invLen; nz *= invLen;
+                        }
+                        else {
+                            const Color n = SampleTexture(*item.normalMap, tu, tv);
+                            nx = static_cast<float>(n.r & 0xFF) / 255.0f * 2.0f - 1.0f;
+                            ny = static_cast<float>(n.g & 0xFF) / 255.0f * 2.0f - 1.0f;
+                            nz = static_cast<float>(n.b & 0xFF) / 255.0f * 2.0f - 1.0f;
+                        }
+                        frag.nx = nx; frag.ny = ny; frag.nz = nz;
                     }
-                    if (hasMetallic)
-                        frag.metallic = static_cast<float>(SampleTexture(*item.metalMap, tu, tv).r & 0xFF) / 255.0f;
-                    if (hasRoughness)
-                        frag.roughness = static_cast<float>(SampleTexture(*item.roughMap, tu, tv).r & 0xFF) / 255.0f;
-                    if (hasAmbient)
-                        frag.ao = static_cast<float>(SampleTexture(*item.ambientMap, tu, tv).r & 0xFF) / 255.0f;
+                    if (hasMetallic)  frag.metallic = sampleR(*item.metalMap);
+                    if (hasRoughness) frag.roughness = sampleR(*item.roughMap);
+                    if (hasAmbient)   frag.ao = sampleR(*item.ambientMap);
 
                     const PixelOutput c = shader(frag);
                     const float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
