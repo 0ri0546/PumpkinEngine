@@ -79,13 +79,8 @@ namespace Pumpkin {
 			PBRShader shader{
 				.normals = m_clippedNormals,
 				.colors = colors,
-				.lightDir = { -1.0f, 0.5f, 0.5f },
-				.lightCol = { 1.0f, 1.0f, 1.0f },
-				.viewDir = { 0.0f, 0.0f, 1.0f },
-				.lightIntensity = 3.0f,
-				.ambient = item.ao,
-				.metallic = item.metalness,
-				.roughness = item.roughness
+			    .metallic = item.metalness,
+			    .roughness = item.roughness,
 			};
             FragmentShader(m_batch, ctx.fb, ctx.db, shader, item.texture ? *item.texture : Texture{});
         }

@@ -167,19 +167,19 @@ namespace Pumpkin {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;               // base color (albedo)
 
-        Vec3f lightDir{ 0.0f, 1.0f, 0.0f };          // points toward the light
+        Vec3f lightDir{ 0.0f, 0.0f, 1.0f };          // points toward the light
         Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
-        Vec3f viewDir{ 0.0f, 0.0f, 1.0f };           // points toward the camera
+        Vec3f viewDir{ 0.0f, 0.0f, 0.0f };           // points toward the camera
 
-        float lightIntensity = 3.0f;
-        float ambient = 0.1f;
-        float metallic = 0.0f;                       // 0 = dielectric, 1 = metal
-        float roughness = 0.5f;                      // 0 = mirror, 1 = fully rough
+        float lightIntensity = 10.0f;
+        float ambient = 0.5f;
+        float metallic = 0.5f;                       // 0 = dielectric, 1 = metal
+        float roughness = 0.3f;                      // 0 = mirror, 1 = fully rough
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            const Vec3f n = f.Interpolate(normals).Normalized();
-            const Vec3f l = lightDir.Normalized();
-            const Vec3f v = viewDir.Normalized();
+            const Vec3f n = f.Interpolate(normals);
+            const Vec3f l = lightDir;
+            const Vec3f v = viewDir;
             const Vec3f h = (l + v).Normalized();
 
             const float nDotL = std::max(0.0f, Dot(n, l));

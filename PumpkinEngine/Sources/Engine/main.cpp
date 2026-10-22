@@ -85,7 +85,10 @@ static void GenerateNormals(Mesh& mesh)
 // Mesh loading / drawing
 // ---------------------------------------------------------------------------
 
-static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = true) {
+static Mesh LoadMesh(
+    const std::filesystem::path& filepath,
+    Color col = Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
+    bool deduplicate = true) {
     if (filepath.extension().string() != ".obj") return Mesh{};
 
     // triangle test
@@ -221,7 +224,7 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
         }
     }
 
-    mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 255);
+    mesh.colors = GenerateRGBA(mesh.vertices.size(), col.r, col.g, col.b, col.a);
     GenerateNormals(mesh);
     return mesh;
 }
