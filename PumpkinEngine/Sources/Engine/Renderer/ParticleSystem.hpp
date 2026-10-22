@@ -101,21 +101,6 @@ namespace Pumpkin {
                 m_settings.maxDuration
             );
 
-            /*particle.color = {
-                static_cast<int>(randomFloat(
-                    static_cast<float>(m_settings.colorMin[0]),
-                    static_cast<float>(m_settings.colorMax[0]))),
-                static_cast<int>(randomFloat(
-                    static_cast<float>(m_settings.colorMin[1]),
-                    static_cast<float>(m_settings.colorMax[1]))),
-                static_cast<int>(randomFloat(
-                    static_cast<float>(m_settings.colorMin[2]),
-                    static_cast<float>(m_settings.colorMax[2]))),
-                static_cast<int>(randomFloat(
-                    static_cast<float>(m_settings.colorMin[3]),
-                    static_cast<float>(m_settings.colorMax[3])))
-            };*/
-
             const float t = std::clamp(particle.age / particle.lifetime, 0.0f, 1.0f);
 
             particle.color = m_settings.colorMin;
