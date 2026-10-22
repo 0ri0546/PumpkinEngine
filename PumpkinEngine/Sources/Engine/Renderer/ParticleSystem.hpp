@@ -28,6 +28,25 @@ namespace Pumpkin {
                     continue;
 
                 particle.age += deltaTime;
+
+                const float t = std::clamp(
+                    particle.age / particle.lifetime,
+                    0.0f,
+                    1.0f
+                );
+
+                for (int i = 0; i < 4; ++i) {
+                    particle.color[i] = std::clamp(
+                        static_cast<int>(std::lerp(
+                            static_cast<float>(m_settings.colorMin[i]),
+                            static_cast<float>(m_settings.colorMax[i]),
+                            t
+                        )),
+                        0,
+                        255
+                    );
+                }
+
                 particle.velocity += particle.gravity * deltaTime;
                 particle.pos += particle.velocity * deltaTime;
             }
@@ -52,8 +71,9 @@ namespace Pumpkin {
             Particle particle{};
 
             const auto randomFloat = [this](float min, float max) {
-                return std::uniform_real_distribution<float>(min, max)(m_rng);
-                };
+                std::uniform_real_distribution<float> dist{ min, max };
+                return dist(m_rng);
+            };
 
             const float radius = m_settings.spawnRadius;
             const float x = randomFloat(-radius, radius);
@@ -81,7 +101,7 @@ namespace Pumpkin {
                 m_settings.maxDuration
             );
 
-            particle.color = {
+            /*particle.color = {
                 static_cast<int>(randomFloat(
                     static_cast<float>(m_settings.colorMin[0]),
                     static_cast<float>(m_settings.colorMax[0]))),
@@ -94,8 +114,11 @@ namespace Pumpkin {
                 static_cast<int>(randomFloat(
                     static_cast<float>(m_settings.colorMin[3]),
                     static_cast<float>(m_settings.colorMax[3])))
-            };
+            };*/
 
+            const float t = std::clamp(particle.age / particle.lifetime, 0.0f, 1.0f);
+
+            particle.color = m_settings.colorMin;
             m_particles.push_back(particle);
         }
 

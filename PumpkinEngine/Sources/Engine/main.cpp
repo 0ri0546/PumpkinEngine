@@ -348,23 +348,37 @@ int main() {
     Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
 
     Particles particleSettings{};
-    particleSettings.pos = { 0.0f, 0.0f, 0.0f };
-    particleSettings.dir = { 1.0f, 1.0f, 0.0f };
-    particleSettings.maxParticles = 200;
-    particleSettings.minDuration = 0.5f;
-    particleSettings.maxDuration = 3.0f;
-    particleSettings.speedMin = 0.7f;
-    particleSettings.speedMax = 1.3f;
-    particleSettings.gravity = Vec3f{ 0.0f, -9.81f, 0.0f };
-    particleSettings.initialVelocity = Vec3f{ 0.0f, 2.0f, 0.0f };
+    particleSettings.
+        SetPosition(0.0f, 0.0f, 0.0f).
+        SetDirection(1.0f, 1.0f, 0.0f).
+        SetMaxParticles(100).
+        SetMinDuration(0.5f).
+        SetMaxDuration(3.0f).
+        SetSpeedMin(0.7f).
+        SetSpeedMax(1.3f).
+        SetGravity(0.0f, -9.81f, 0.0f).
+        SetInitialVelocity(0.0f, 2.0f, 0.0f).SetColorMin({ 255, 0, 255, 255 }).SetColorMax({ 0, 255, 0, 255 });
+
+
+    Particles particleSettings2{};
+    particleSettings2.
+        SetPosition(3.0f, 0.0f, 0.0f).
+        SetDirection(-1.0f, 1.0f, 0.3f).
+        SetMaxParticles(500).
+        SetMinDuration(0.5f).
+        SetMaxDuration(3.0f).
+        SetSpeedMin(0.7f).
+        SetSpeedMax(1.3f).
+        SetGravity(0.0f, -9.81f, 0.0f).
+        SetInitialVelocity(0.0f, 2.0f, 0.0f).SetColorMin({ 255, 0, 255, 255 }).SetColorMax({ 255, 255, 255, 255 });
 
     ParticleSystem particleSystem(particleSettings);
-    ParticlePass particlePass(particleSystem);
+    ParticleSystem particleSystem2(particleSettings2);
 
     // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
+    renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
     renderer.AddPass<GeometryPass>();
-    renderer.AddPass<ParticlePass>(particleSystem);
     renderer.AddPass<TextPass>(text);
     
     std::array scene{

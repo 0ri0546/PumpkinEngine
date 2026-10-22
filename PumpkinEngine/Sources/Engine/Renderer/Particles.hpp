@@ -21,6 +21,67 @@ namespace Pumpkin {
 
         Vec4<int> colorMin = { 255, 255, 255, 255 };
         Vec4<int> colorMax = { 0, 255, 127, 255 };
+
+        Particles& SetPosition(float x, float y, float z) {
+            pos = { x, y ,z };
+            return *this;
+        }
+
+        Particles& SetDirection(float dirx, float diry, float dirz) {
+            dir = { dirx, diry, dirz };
+            return *this;
+        }
+
+        Particles& SetGravity(float x, float y, float z) {
+            gravity = { x, y, z };
+            return *this;
+        }
+
+        Particles& SetMaxParticles(float nb) {
+            maxParticles = nb;
+            return *this;
+        }
+
+        Particles& SetMinDuration(float nb) {
+            minDuration = nb;
+            return *this;
+        }
+
+        Particles& SetMaxDuration(float nb) {
+            maxDuration = nb;
+            return *this;
+        }
+
+        Particles& SetSpawnRadius(float nb) {
+            spawnRadius = nb;
+            return *this;
+        }
+
+        Particles& SetInitialVelocity(float x, float y, float z) {
+            initialVelocity = { x, y, z };
+            return *this;
+        }
+
+        Particles& SetSpeedMin(float nb) {
+            speedMin = nb;
+            return *this;
+        }
+
+        Particles& SetSpeedMax(float nb) {
+            speedMax = nb;
+            return *this;
+        }
+
+        Particles& SetColorMin(Vec4<int> color) {
+            colorMin = color;
+            return *this;
+        }
+
+        Particles& SetColorMax(Vec4<int> color) {
+            colorMax = color;
+            return *this;
+        }
+
     };
 
     struct Particle {
