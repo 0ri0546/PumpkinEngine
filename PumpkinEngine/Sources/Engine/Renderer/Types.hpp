@@ -57,7 +57,8 @@ namespace Pumpkin {
 		PBR,
 		BlinnPhong,
         Lambert,
-		VertexColor
+		VertexColor, 
+        Toon
 	};
 
     // 8-bit color depth

@@ -101,6 +101,7 @@ namespace Pumpkin {
             LambertShader lambert{};
             BlinnPhongShader blinnPhong{};
             PBRShaderMaps pbrMaps{};
+            ToonShader toon{};
             switch (item.material->shader) {
             case ShaderId::VertexColor:
                 vcs.colors = colors;
@@ -129,6 +130,13 @@ namespace Pumpkin {
                     .roughness = item.material->roughness
                 };
                 FragmentShader(m_batch, ctx.fb, ctx.db, pbrMaps, item);
+                break;
+            case ShaderId::Toon:
+                toon = ToonShader{
+                    .normals = m_clippedNormals,
+                    .colors = colors
+                };
+                FragmentShader(m_batch, ctx.fb, ctx.db, toon, item);
                 break;
             default:
                 break;

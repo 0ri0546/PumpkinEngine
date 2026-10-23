@@ -34,6 +34,7 @@
 #include <Renderer/ParticleSystem.hpp>
 #include <Renderer/Passes/ParticlePass.hpp>
 #include <Renderer/Passes/SkyboxPass.hpp>
+#include <Renderer/Passes/OutlinePass.hpp>
 
 using namespace Pumpkin;
 
@@ -358,7 +359,8 @@ int main() {
 		.metallic = 0.7f,
 		.roughness = 0.3f,
 		.ao = 0.5f,
-		.albedo = &cowAlbedo
+		.albedo = &cowAlbedo,
+		.shader = ShaderId::Toon //test avc cartoon shader, tu peux retirer si tu veux
 	};
 	Material vkRoomMaterial{
 		.baseColor = vkRoomColor,
@@ -420,6 +422,8 @@ int main() {
     renderer.AddPass<SkyboxPass>(skyboxTexture);
     renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
     renderer.AddPass<GeometryPass>();
+    auto& outline = renderer.AddPass<OutlinePass>();
+	outline.threshold = 0.01f; //tolerence : plus bas = plus de contours / plus haut = moins de contours
     renderer.AddPass<TextPass>(text);
     
     std::array scene{

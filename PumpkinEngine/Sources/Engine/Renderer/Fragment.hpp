@@ -96,6 +96,60 @@ namespace Pumpkin {
         }
     };
 
+    struct ToonShader {
+        std::span<const Vec3f> normals;
+        std::span<const Color> colors;
+
+        Vec3f lightDir{ 0.0f, 1.0f, 0.0f };
+        Vec3f lightCol{ 1.0f, 1.0f, 1.0f };
+
+        float ambient = 0.2f;
+        float specularStrength = 0.35f;
+        float shininess = 32.0f;
+
+        [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
+            const Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f l = lightDir.Normalized();
+
+            const float diff = std::max(0.0f, Dot(n, l));
+
+            float intensity;
+
+            if (diff > 0.75f)
+                intensity = 1.0f;
+            else if (diff > 0.4f)
+                intensity = 0.7f;
+            else if (diff > 0.15f)
+                intensity = 0.45f;
+            else
+                intensity = ambient;
+
+            const PixelOutput color = VertexColorShader{ colors }(f);
+
+            const float albedo[3] = {
+                color.r * f.albedo[0],
+                color.g * f.albedo[1],
+                color.b * f.albedo[2]
+            };
+
+            const Vec3f v{ 0.0f, 0.0f, 1.0f };
+            const Vec3f h = (l + v).Normalized();
+
+            const float specAngle = std::max(0.0f, Dot(n, h));
+            const float spec = diff > 0.0f &&
+                specAngle > 0.9f
+                ? specularStrength
+                : 0.0f;
+
+            return {
+                std::clamp(albedo[0] * lightCol[0] * intensity + 255.0f * spec, 0.0f, 255.0f),
+                std::clamp(albedo[1] * lightCol[1] * intensity + 255.0f * spec, 0.0f, 255.0f),
+                std::clamp(albedo[2] * lightCol[2] * intensity + 255.0f * spec, 0.0f, 255.0f),
+                color.a * f.albedo[3]
+            };
+        }
+    };
+
     struct BlinnPhongShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
