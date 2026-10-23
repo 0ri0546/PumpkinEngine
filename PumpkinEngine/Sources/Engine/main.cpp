@@ -30,7 +30,10 @@
 #include <Renderer/Passes/ClearPass.hpp>
 #include <Renderer/Passes/GeometryPass.hpp>
 #include <Renderer/Passes/TextPass.hpp>
-
+#include <Renderer/Particles.hpp>
+#include <Renderer/ParticleSystem.hpp>
+#include <Renderer/Passes/ParticlePass.hpp>
+#include <Renderer/Passes/SkyboxPass.hpp>
 
 using namespace Pumpkin;
 
@@ -342,6 +345,13 @@ int main() {
     if (!LoadTexture(vkRoomORM, "Assets/Textures/VikingRoom/ORM.png")) {
         std::println("Impossible to load texture.");
     }
+    Texture skyboxTexture;
+    if (!LoadTexture(
+        skyboxTexture,
+        "Assets/Textures/Skybox.png"
+    )) {
+        std::println("Impossible to load texture.");
+    }
 
 	Material cowMaterial{
 		.baseColor = cowColor,
@@ -369,16 +379,49 @@ int main() {
     }
 
     Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
-	text.
-        SetColor(SDL_Color{ 255, 0, 255, 255 }).
-        SetSize(50.0f).
-        Build();
+
+    Particles particleSettings{};
+    particleSettings.
+        SetPosition(0.0f, 3.0f, 0.0f).
+        SetDirection(0.0f, -1.0f, 0.0f).
+        SetMaxParticles(2000).
+        SetMinDuration(0.5f).
+        SetMaxDuration(3.0f).
+        SetSpeedMin(0.1f).
+        SetSpeedMax(0.4f).
+        SetGravity(0.0f, -0.62f, 0.0f).
+        SetInitialVelocity(0.0f, 0.0f, 0.0f).
+        SetColorMin({ 255, 210, 210, 255 }).
+        SetColorMax({ 255, 255, 255, 255 }).
+        SetSpawnRadius(20);
+
+
+    Particles particleSettings2{};
+    particleSettings2.
+        SetPosition(3.0f, 0.0f, 0.0f).
+        SetDirection(-1.0f, 1.0f, 0.3f).
+        SetMaxParticles(500).
+        SetMinDuration(0.5f).
+        SetMaxDuration(3.0f).
+        SetSpeedMin(0.7f).
+        SetSpeedMax(1.3f).
+        SetGravity(0.0f, -9.81f, 0.0f).
+        SetInitialVelocity(0.0f, 2.0f, 0.0f).
+        SetColorMin({ 255, 0, 255, 255 }).
+        SetColorMax({ 255, 255, 255, 255 });
+
+    auto particleSystem = std::make_shared<ParticleSystem>(particleSettings);
+    auto particleSystem2 = std::make_shared<ParticleSystem>(particleSettings2);
+
+    renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
 
     // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
+    renderer.AddPass<SkyboxPass>(skyboxTexture);
+    renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
     renderer.AddPass<GeometryPass>();
     renderer.AddPass<TextPass>(text);
-
+    
     std::array scene{
         DrawItem { 
             .mesh = &cowObj,

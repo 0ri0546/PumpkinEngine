@@ -1,12 +1,14 @@
+
 #include "TextPass.hpp"
 
+#include <algorithm>
 #include <SDL3/SDL.h>
 
 #include <Utils/ThreadPool.hpp>
 
 namespace Pumpkin {
     void TextPass::DrawText(const FrameBuffer& fb, const Text& text) {
-        if (!fb.pixels || !text.text)
+        if (!fb.pixels || !text.text || !text.surface)
             return;
 
         if (!text.surface)
@@ -17,8 +19,14 @@ namespace Pumpkin {
 
         const int startX = std::max(0, text.x);
         const int startY = std::max(0, text.y);
-        const int endX = std::min(static_cast<int>(fb.width), text.x + text.surface->w);
-        const int endY = std::min(static_cast<int>(fb.height), text.y + text.surface->h);
+        const int endX = std::min(
+            static_cast<int>(fb.width),
+            text.x + text.surface->w
+        );
+        const int endY = std::min(
+            static_cast<int>(fb.height),
+            text.y + text.surface->h
+        );
 
         if (startX >= endX || startY >= endY) {
             SDL_UnlockSurface(text.surface);
