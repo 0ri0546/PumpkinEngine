@@ -64,6 +64,15 @@ namespace Pumpkin {
                     y < 0 || y >= ctx.fb.height)
                     continue;
 
+                const float depth = zNdc * 0.5f + 0.5f;
+
+                const size_t index =
+                    static_cast<size_t>(y) * ctx.fb.width + x;
+
+                if (depth >= ctx.db.pixels[index])
+                    continue;
+
+                // La particule est devant ce qui est déjà rendu.
                 const auto r = static_cast<std::uint32_t>(
                     std::clamp(particle.color[0], 0, 255));
                 const auto g = static_cast<std::uint32_t>(
@@ -73,9 +82,10 @@ namespace Pumpkin {
                 const auto a = static_cast<std::uint32_t>(
                     std::clamp(particle.color[3], 0, 255));
 
-                ctx.fb.pixels[
-                    static_cast<size_t>(y) * ctx.fb.width + x
-                ] = (a << 24) | (r << 16) | (g << 8) | b;
+                ctx.fb.pixels[index] =
+                    (a << 24) | (r << 16) | (g << 8) | b;
+
+                ctx.db.pixels[index] = depth;
             }
         }
     }
