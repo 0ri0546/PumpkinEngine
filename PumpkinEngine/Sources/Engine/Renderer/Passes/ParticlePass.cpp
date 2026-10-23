@@ -10,9 +10,13 @@ namespace Pumpkin {
         if (!ctx.fb.pixels || ctx.fb.width == 0 || ctx.fb.height == 0)
             return;
 
-        for (auto& m_system : m_systems) {
+        for (const auto& m_system : m_systems) {
 
-            m_system.Update(ctx.deltaTime);
+            if (!m_system)
+                continue;
+
+            ParticleSystem& system = *m_system;
+            system.Update(ctx.deltaTime);
 
             const float aspect =
                 static_cast<float>(ctx.fb.width) /
@@ -29,7 +33,7 @@ namespace Pumpkin {
 
             const Mat4f viewProjection = projection * view;
 
-            for (const Particle& particle : m_system.GetParticles()) {
+            for (const Particle& particle : system.GetParticles()) {
                 if (!particle.IsAlive())
                     continue;
 
@@ -72,7 +76,6 @@ namespace Pumpkin {
                 if (depth >= ctx.db.pixels[index])
                     continue;
 
-                // La particule est devant ce qui est déjà rendu.
                 const auto r = static_cast<std::uint32_t>(
                     std::clamp(particle.color[0], 0, 255));
                 const auto g = static_cast<std::uint32_t>(

@@ -373,10 +373,14 @@ int main() {
         SetSpeedMin(0.7f).
         SetSpeedMax(1.3f).
         SetGravity(0.0f, -9.81f, 0.0f).
-        SetInitialVelocity(0.0f, 2.0f, 0.0f).SetColorMin({ 255, 0, 255, 255 }).SetColorMax({ 255, 255, 255, 255 });
+        SetInitialVelocity(0.0f, 2.0f, 0.0f).
+        SetColorMin({ 255, 0, 255, 255 }).
+        SetColorMax({ 255, 255, 255, 255 });
 
-    ParticleSystem particleSystem(particleSettings);
-    ParticleSystem particleSystem2(particleSettings2);
+    auto particleSystem = std::make_shared<ParticleSystem>(particleSettings);
+    auto particleSystem2 = std::make_shared<ParticleSystem>(particleSettings2);
+
+    renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
 
     // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));

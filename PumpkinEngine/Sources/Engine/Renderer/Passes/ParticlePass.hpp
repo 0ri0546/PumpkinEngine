@@ -4,27 +4,28 @@
 #include <Renderer/ParticleSystem.hpp>
 #include <type_traits>
 
-namespace Pumpkin {
+#include <memory>
+#include <vector>
 
-    template <typename T>
-    concept IsParticleSystem = std::is_same_v<T, ParticleSystem>;
-
-    class ParticlePass final : public RenderPass {
+namespace Pumpkin
+{
+    class ParticlePass final : public RenderPass
+    {
     public:
-        template <IsParticleSystem... Parts>
-        explicit ParticlePass(Parts&... systems) {
-            (m_systems.push_back(std::forward<Parts&>(systems)), ...);
+        template<typename... Parts>
+        explicit ParticlePass(std::shared_ptr<Parts>... systems)
+        {
+            (m_systems.emplace_back(std::move(systems)), ...);
         }
 
-        [[nodiscard]]
-        std::string_view Name() const override {
+        std::string_view Name() const override
+        {
             return "Particles";
         }
 
         void Execute(RenderContext& ctx) override;
 
     private:
-        std::vector<ParticleSystem> m_systems;
+        std::vector<std::shared_ptr<ParticleSystem>> m_systems;
     };
-
 }
