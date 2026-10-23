@@ -11,16 +11,9 @@
 
 namespace Pumpkin {
     struct DrawItem {
-        const Mesh*    mesh;
-        const Mat4f*   model;
-        const Texture* albedo;
-        const Texture* normalMap = nullptr;
-        const Texture* metalMap = nullptr;
-        const Texture* roughMap = nullptr;
-        const Texture* ambientMap = nullptr;
-        float metalness = 0.0f;
-        float roughness = 0.0f;
-		float ambient   = 0.0f;
+        const Mesh*     mesh;
+        const Mat4f*    model;
+		const Material* material;
     };
 
     struct RenderContext {

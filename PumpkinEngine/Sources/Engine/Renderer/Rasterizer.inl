@@ -243,11 +243,9 @@ namespace Pumpkin {
         frag.i1 = t.i1;
         frag.i2 = t.i2;
         frag.primitiveId = primitiveId;
-        const bool hasAlbedo = item.albedo && item.albedo->width > 0 && item.albedo->height > 0 && !item.albedo->pixels.empty();
-        const bool hasNormal = item.normalMap && item.normalMap->width > 0 && item.normalMap->height > 0 && !item.normalMap->pixels.empty();
-        const bool hasMetallic = item.metalMap && item.metalMap->width > 0 && item.metalMap->height > 0 && !item.metalMap->pixels.empty();
-        const bool hasRoughness = item.roughMap && item.roughMap->width > 0 && item.roughMap->height > 0 && !item.roughMap->pixels.empty();
-        const bool hasAmbient = item.ambientMap && item.ambientMap->width > 0 && item.ambientMap->height > 0 && !item.ambientMap->pixels.empty();
+        const bool hasAlbedo = item.material->albedo && item.material->albedo->width > 0 && item.material->albedo->height > 0 && !item.material->albedo->pixels.empty();
+        const bool hasNormal = item.material->normal && item.material->normal->width > 0 && item.material->normal->height > 0 && !item.material->normal->pixels.empty();
+		const bool hasORM = item.material->orm && item.material->orm->width > 0 && item.material->orm->height > 0 && !item.material->orm->pixels.empty();
 
         for (int y = ya; y < yb; ++y) {
             const auto row = static_cast<float>(y - t.y0);
@@ -298,7 +296,7 @@ namespace Pumpkin {
 
                 for (; x + kLanes <= end; x += kLanes) {
                     const V::type oldDepth = V::load(depthRow + x);
-                    const V::type mask = DepthMask(DepthTest, vz, oldDepth);
+                    const V::type mask = DepthMask(item.material->depthTest, vz, oldDepth);
                     const auto bits = V::movemask(mask);
 
                     // No lane passes: skip the division, the shader and the stores.
@@ -315,16 +313,26 @@ namespace Pumpkin {
 
                         auto chan = [&]<int S>(const TexelSIMD & t) { return V::mul(Channel<S>(t), inv255); };
 
-                        // One channel (the first one) of a map, 0..1: used by metallic, roughness and AO.
+                        // One channel (ORM : Occlusion Roughness Metallic) of a map, 0..1 range.
                         const auto sampleR = [&](const Texture& tex) {
                             if (BilinearFiltering)
                                 return V::mul(SampleTexture8BilinearChannel<24>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
                             return chan.template operator()<24>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
                         };
+                        const auto sampleG = [&](const Texture& tex) {
+                            if (BilinearFiltering)
+                                return V::mul(SampleTexture8BilinearChannel<16>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
+                            return chan.template operator()<16>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
+                        };
+                        const auto sampleB = [&](const Texture& tex) {
+                            if (BilinearFiltering)
+                                return V::mul(SampleTexture8BilinearChannel<8>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
+                            return chan.template operator()<8>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
+                        };
 
                         if (hasAlbedo) {
                             if (BilinearFiltering) {
-                                const Texel8 bl = SampleTexture8Bilinear(item.albedo->pixels.data(), item.albedo->width, item.albedo->height, tu, tv);
+                                const Texel8 bl = SampleTexture8Bilinear(item.material->albedo->pixels.data(), item.material->albedo->width, item.material->albedo->height, tu, tv);
                                 const V::type r = V::mul(bl.r, inv255);
                                 const V::type g = V::mul(bl.g, inv255);
                                 const V::type b = V::mul(bl.b, inv255);
@@ -334,7 +342,7 @@ namespace Pumpkin {
                                 V::store(aA, V::mul(bl.a, inv255)); // alpha stays linear
                             }
                             else {
-                                const TexelSIMD t = SampleTexture8(item.albedo->pixels.data(), item.albedo->width, item.albedo->height, tu, tv);
+                                const TexelSIMD t = SampleTexture8(item.material->albedo->pixels.data(), item.material->albedo->width, item.material->albedo->height, tu, tv);
                                 const V::type r = chan.template operator()<24>(t);
                                 const V::type g = chan.template operator()<16>(t);
                                 const V::type b = chan.template operator()<8>(t);
@@ -346,7 +354,7 @@ namespace Pumpkin {
                         }
                         if (hasNormal) {
                             if (BilinearFiltering) {
-                                const Texel8 bl = SampleTexture8Bilinear(item.normalMap->pixels.data(), item.normalMap->width, item.normalMap->height, tu, tv);
+                                const Texel8 bl = SampleTexture8Bilinear(item.material->normal->pixels.data(), item.material->normal->width, item.material->normal->height, tu, tv);
                                 const V::type nx = V::sub(V::mul(V::mul(bl.r, inv255), two), one1);
                                 const V::type ny = V::sub(V::mul(V::mul(bl.g, inv255), two), one1);
                                 const V::type nz = V::sub(V::mul(V::mul(bl.b, inv255), two), one1);
@@ -358,15 +366,17 @@ namespace Pumpkin {
                                 V::store(nZ, V::mul(nz, invLen));
                             }
                             else {
-                                const TexelSIMD t = SampleTexture8(item.normalMap->pixels.data(), item.normalMap->width, item.normalMap->height, tu, tv);
+                                const TexelSIMD t = SampleTexture8(item.material->normal->pixels.data(), item.material->normal->width, item.material->normal->height, tu, tv);
                                 V::store(nX, V::sub(V::mul(chan.template operator()<24>(t), two), one1));
                                 V::store(nY, V::sub(V::mul(chan.template operator()<16>(t), two), one1));
                                 V::store(nZ, V::sub(V::mul(chan.template operator()<8>(t), two), one1));
                             }
                         }
-                        if (hasMetallic)  V::store(mt, sampleR(*item.metalMap));
-                        if (hasRoughness) V::store(rg, sampleR(*item.roughMap));
-                        if (hasAmbient)   V::store(ao, sampleR(*item.ambientMap));
+                        if (hasORM) {
+                            V::store(ao, sampleR(*item.material->orm));
+                            V::store(rg, sampleG(*item.material->orm));
+                            V::store(mt, sampleB(*item.material->orm));
+                        }
 
                         // The shader is scalar: call it for the lanes that passed.
                         for (int lane = 0; lane < kLanes; ++lane) {
@@ -399,8 +409,8 @@ namespace Pumpkin {
                             const V::type a = Clamp01(V::mul(sa, inv255));
                             const V::type half = V::set1(0.5f);
                             const auto mix = [&](V::type d, V::type s) {
-                                return V::add(Blend(AlphaBlend, d, s, a), half);
-                                };
+                                return V::add(Blend(item.material->blend, d, s, a), half);
+                            };
 
                             const TexelSIMD packed = PackBGRA(
                                 mix(Channel<16>(old), sr),
@@ -428,7 +438,7 @@ namespace Pumpkin {
             float w2 = t.w2.At(row, tailLo);
 
             for (; x < end; ++x) {
-                if (DepthPass(DepthTest, z, depthRow[x])) {
+                if (DepthPass(item.material->depthTest, z, depthRow[x])) {
                     const float inv = 1.0f / k;
                     const float tu = u * inv, tv = v * inv;
 
@@ -443,22 +453,32 @@ namespace Pumpkin {
                     frag.nx = 0.0f; frag.ny = 0.0f; frag.nz = 1.0f;
                     frag.metallic = 1.0f; frag.roughness = 1.0f; frag.ao = 1.0f;
 
-                    // One channel (the first one) of a map, 0..1: used by metallic, roughness and AO.
+					// One channel (ORM : Occlusion Roughness Metallic) of a map, 0..1 range.
                     const auto sampleR = [&](const Texture& tex) {
                         if (BilinearFiltering)
                             return SampleTextureBilinearChannel<24>(tex, tu, tv) / 255.0f;
                         return static_cast<float>(SampleTexture(tex, tu, tv).r & 0xFF) / 255.0f;
                     };
+                    const auto sampleG = [&](const Texture& tex) {
+                        if (BilinearFiltering)
+                            return SampleTextureBilinearChannel<16>(tex, tu, tv) / 255.0f;
+                        return static_cast<float>(SampleTexture(tex, tu, tv).g & 0xFF) / 255.0f;
+                    };
+                    const auto sampleB = [&](const Texture& tex) {
+                        if (BilinearFiltering)
+                            return SampleTextureBilinearChannel<8>(tex, tu, tv) / 255.0f;
+                        return static_cast<float>(SampleTexture(tex, tu, tv).b & 0xFF) / 255.0f;
+                    };
 
                     if (hasAlbedo) {
                         float r, g, b, a;
                         if (BilinearFiltering) {
-                            const TexelF texel = SampleTextureBilinear(*item.albedo, tu, tv);
+                            const TexelF texel = SampleTextureBilinear(*item.material->albedo, tu, tv);
                             r = texel.r / 255.0f; g = texel.g / 255.0f;
                             b = texel.b / 255.0f; a = texel.a / 255.0f;
                         }
                         else {
-                            const Color texel = SampleTexture(*item.albedo, tu, tv);
+                            const Color texel = SampleTexture(*item.material->albedo, tu, tv);
                             r = static_cast<float>(texel.r & 0xFF) / 255.0f;
                             g = static_cast<float>(texel.g & 0xFF) / 255.0f;
                             b = static_cast<float>(texel.b & 0xFF) / 255.0f;
@@ -472,7 +492,7 @@ namespace Pumpkin {
                     if (hasNormal) {
                         float nx, ny, nz;
                         if (BilinearFiltering) {
-                            const TexelF n = SampleTextureBilinear(*item.normalMap, tu, tv);
+                            const TexelF n = SampleTextureBilinear(*item.material->normal, tu, tv);
                             nx = n.r / 255.0f * 2.0f - 1.0f;
                             ny = n.g / 255.0f * 2.0f - 1.0f;
                             nz = n.b / 255.0f * 2.0f - 1.0f;
@@ -481,16 +501,18 @@ namespace Pumpkin {
                             nx *= invLen; ny *= invLen; nz *= invLen;
                         }
                         else {
-                            const Color n = SampleTexture(*item.normalMap, tu, tv);
+                            const Color n = SampleTexture(*item.material->normal, tu, tv);
                             nx = static_cast<float>(n.r & 0xFF) / 255.0f * 2.0f - 1.0f;
                             ny = static_cast<float>(n.g & 0xFF) / 255.0f * 2.0f - 1.0f;
                             nz = static_cast<float>(n.b & 0xFF) / 255.0f * 2.0f - 1.0f;
                         }
                         frag.nx = nx; frag.ny = ny; frag.nz = nz;
                     }
-                    if (hasMetallic)  frag.metallic = sampleR(*item.metalMap);
-                    if (hasRoughness) frag.roughness = sampleR(*item.roughMap);
-                    if (hasAmbient)   frag.ao = sampleR(*item.ambientMap);
+                    if (hasORM) {
+                        frag.ao = sampleR(*item.material->orm);
+                        frag.roughness = sampleG(*item.material->orm);
+                        frag.metallic = sampleB(*item.material->orm);
+                    }
 
                     const PixelOutput c = shader(frag);
                     const float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
@@ -507,10 +529,10 @@ namespace Pumpkin {
                         const auto dg = static_cast<float>((pixel >> 8) & 0xFF);
                         const auto dB = static_cast<float>(pixel & 0xFF);
                         pixelRow[x] = PackColor(
-                            ToByte(Blend(AlphaBlend, dr, sr, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, dg, sg, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, dB, sb, a) + 0.5f),
-                            ToByte(Blend(AlphaBlend, da, sa, a) + 0.5f));
+                            ToByte(Blend(item.material->blend, dr, sr, a) + 0.5f),
+                            ToByte(Blend(item.material->blend, dg, sg, a) + 0.5f),
+                            ToByte(Blend(item.material->blend, dB, sb, a) + 0.5f),
+                            ToByte(Blend(item.material->blend, da, sa, a) + 0.5f));
                     }
                 }
 

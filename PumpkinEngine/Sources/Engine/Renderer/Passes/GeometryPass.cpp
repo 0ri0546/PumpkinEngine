@@ -6,7 +6,28 @@
 #include <Utils/RenderProfiler.hpp>
 #include <Utils/ThreadPool.hpp>
 
+#include <ranges>
+
 namespace Pumpkin {
+    void GeometryPass::Execute(RenderContext& ctx) {
+        const auto dist = [&](const DrawItem& i) {
+            return Distance(ctx.camera.pos, i.model->ExtractPosition());
+        };
+        const auto isTransparent = [](const DrawItem& i) {
+            return i.material->baseColor.a < 255.0f;
+        };
+
+        std::ranges::stable_sort(ctx.scene, [&](const DrawItem& a, const DrawItem& b) {
+            const bool ta = isTransparent(a), tb = isTransparent(b);
+            if (ta != tb) return tb;                // opaque first
+            return ta ? dist(a) > dist(b)           // transparent: far -> near
+                      : dist(a) < dist(b);          // opaque: near -> far
+        });
+
+        for (auto& item : ctx.scene)
+            DrawMesh(item, ctx);
+    }
+
     // Pipeline: vertex shader -> clipping -> primitive assembly -> rasterizer -> fragment shader
     void GeometryPass::DrawMesh(const DrawItem& item, const RenderContext& ctx) {
         // 1. Vertex shader
@@ -66,7 +87,7 @@ namespace Pumpkin {
         {
             Prof::Scope scope(Prof::Stage::Assemble);
             const AssemblyDesc desc{
-                .culling = CullMode::None,
+                .culling = CullMode::Back,
                 .width   = ctx.fb.width,
                 .height  = ctx.fb.height
             };
@@ -76,16 +97,42 @@ namespace Pumpkin {
         // 5. Fragment shader
         {
             Prof::Scope scope(Prof::Stage::Fragment);
-            PBRShaderMaps pbrMaps{
-                .normals = m_clippedNormals,
-                .colors = colors
-            };
-            FragmentShader(
-                m_batch,
-                ctx.fb, ctx.db,
-                pbrMaps,
-                item
-            );
+            VertexColorShader vcs{};
+            LambertShader lambert{};
+            BlinnPhongShader blinnPhong{};
+            PBRShaderMaps pbrMaps{};
+            switch (item.material->shader) {
+            case ShaderId::VertexColor:
+                vcs.colors = colors;
+                FragmentShader(m_batch, ctx.fb, ctx.db, vcs, item);
+                break;
+            case ShaderId::Lambert:
+                lambert = LambertShader{
+                    .normals = m_clippedNormals,
+                    .colors = colors
+                };
+                FragmentShader(m_batch, ctx.fb, ctx.db, lambert, item);
+                break;
+            case ShaderId::BlinnPhong:
+                blinnPhong = BlinnPhongShader{
+                    .normals = m_clippedNormals,
+                    .colors = colors
+                };
+                FragmentShader(m_batch, ctx.fb, ctx.db, blinnPhong, item);
+                break;
+            case ShaderId::PBR:
+                pbrMaps = PBRShaderMaps{
+                    .normals = m_clippedNormals,
+                    .colors = colors,
+                    .ambient = item.material->ao,
+                    .metallic = item.material->metallic,
+                    .roughness = item.material->roughness
+                };
+                FragmentShader(m_batch, ctx.fb, ctx.db, pbrMaps, item);
+                break;
+            default:
+                break;
+            }
         }
     }
 }

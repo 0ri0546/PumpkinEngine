@@ -12,8 +12,6 @@ namespace Pumpkin {
     /// @brief Rasterizer does: depth test, blending and the calls to the fragment shader.
     class Rasterizer {
     public:
-        DepthTestMode DepthTest         = DepthTestMode::Less;
-        BlendMode     AlphaBlend        = BlendMode::Alpha;
         CameraType    Projection        = CameraType::Orthographic;
         bool          BilinearFiltering = true;
 

@@ -36,7 +36,7 @@ using namespace Pumpkin;
 
 constexpr uint64_t kDefaultTargetFps = 120;
 constexpr uint64_t kUncappedFps      = 9'999'999;
-constexpr float    kDefaultVertexW   = 2.0f;
+constexpr float    kDefaultVertexW   = 1.0f;
 constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
 
@@ -182,7 +182,7 @@ static Mesh LoadMesh(
         mesh.vertices.emplace_back(
             Vec4f{
                 attribs.vertices[pos],
-                attribs.vertices[pos + 1] - kDefaultVertexW / 2.0f,
+                attribs.vertices[pos + 1],
                 attribs.vertices[pos + 2],
                 kDefaultVertexW
             },
@@ -320,30 +320,41 @@ int main() {
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
     // Objects creation
-    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj");
+    const Color cowColor{ 255, 255, 255, 255 };
+    const Color vkRoomColor{ 255, 255, 255, 255 };
+
+    Mesh cowObj = LoadMesh("Assets/Models/Spot.obj", cowColor);
+    Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", vkRoomColor);
+
     Mat4f cowModel = Mat4f::Identity();
-    Mat4f vkRoomModel = Mat4f::Translate({ 1.0f, 0.0f, 1.0f });
+    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 0.0f, -3.0f });
     vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
-    Texture cowTexture;
-    if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
+
+    Texture cowAlbedo;
+    if (!LoadTexture(cowAlbedo, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
     }
     Texture vkRoomAlbedo;
     if (!LoadTexture(vkRoomAlbedo, "Assets/Textures/VikingRoom/Albedo.png")) {
         std::println("Impossible to load texture.");
     }
-    Texture vkRoomMetalness;
-    if (!LoadTexture(vkRoomMetalness, "Assets/Textures/VikingRoom/Metallic.png")) {
+    Texture vkRoomORM;
+    if (!LoadTexture(vkRoomORM, "Assets/Textures/VikingRoom/ORM.png")) {
         std::println("Impossible to load texture.");
     }
-    Texture vkRoomRoughness;
-    if (!LoadTexture(vkRoomRoughness, "Assets/Textures/VikingRoom/Roughness.png")) {
-        std::println("Impossible to load texture.");
-    }
-    Texture vkRoomAmbient;
-    if (!LoadTexture(vkRoomAmbient, "Assets/Textures/VikingRoom/AO.png")) {
-        std::println("Impossible to load texture.");
-    }
+
+	Material cowMaterial{
+		.baseColor = cowColor,
+		.metallic = 0.7f,
+		.roughness = 0.3f,
+		.ao = 0.5f,
+		.albedo = &cowAlbedo
+	};
+	Material vkRoomMaterial{
+		.baseColor = vkRoomColor,
+		.albedo = &vkRoomAlbedo,
+		.orm = &vkRoomORM
+	};
 
     // Font loading / text creation
     TTF_Font* font = nullptr;
@@ -372,19 +383,13 @@ int main() {
         DrawItem { 
             .mesh = &cowObj,
             .model = &cowModel,
-            .albedo = &cowTexture,
-            .metalness = 0.7f,
-            .roughness = 0.3f,
-            .ambient = 0.5f
+			.material = &cowMaterial
         },
-        DrawItem { 
+        DrawItem {
             .mesh = &vkRoomObj,
             .model = &vkRoomModel,
-            .albedo = &vkRoomAlbedo,
-            .metalMap = &vkRoomMetalness,
-            .roughMap = &vkRoomRoughness,
-            .ambientMap = &vkRoomAmbient
-        }
+            .material = &vkRoomMaterial
+        },
     };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);

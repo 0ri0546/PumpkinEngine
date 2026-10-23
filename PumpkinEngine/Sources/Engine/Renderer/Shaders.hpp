@@ -38,8 +38,6 @@ namespace Pumpkin {
         const DrawItem& item
     ) {
         static constexpr Rasterizer rasterizer{
-            .DepthTest = DepthTestMode::Less,
-            .AlphaBlend = BlendMode::Alpha,
             .Projection = CameraType::Orthographic,
             .BilinearFiltering = true
         };

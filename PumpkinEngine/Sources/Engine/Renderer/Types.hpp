@@ -7,6 +7,8 @@
 #include <SDL3/SDL_ttf.h>
 
 namespace Pumpkin {
+	struct Texture;
+
     // Plane: a value that changes in a straight line across the screen.
     struct Plane {
         float start; // value at the first pixel
@@ -51,12 +53,38 @@ namespace Pumpkin {
 		Multiply
 	};
 
+	enum class ShaderId {
+		PBR,
+		BlinnPhong,
+        Lambert,
+		VertexColor
+	};
+
     // 8-bit color depth
     struct alignas(4) Color {
         uint8_t r{ 0 };
         uint8_t g{ 0 };
         uint8_t b{ 0 };
         uint8_t a{ 255 };
+    };
+
+    struct Material {
+        // Factors
+        Color baseColor{ 255, 255, 255, 255 };
+        float metallic = 1.0f;
+        float roughness = 1.0f;
+        float ao = 1.0f;
+
+        // Texture slots
+        const Texture* albedo = nullptr;
+        const Texture* normal = nullptr;
+        const Texture* orm = nullptr; // R = AO, G = roughness, B = metallic
+
+        // Pipeline state
+        ShaderId      shader = ShaderId::PBR;
+        DepthTestMode depthTest = DepthTestMode::Less;
+        BlendMode     blend = BlendMode::Alpha;
+        bool          depthWrite = true;
     };
 
     struct FrameBuffer {

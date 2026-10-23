@@ -7,10 +7,8 @@ namespace Pumpkin {
     class GeometryPass final : public RenderPass {
     public:
         [[nodiscard]] std::string_view Name() const override { return "Geometry"; }
-        void Execute(RenderContext& ctx) override {
-            for (auto& item : ctx.scene)
-                DrawMesh(item, ctx);
-        }
+        void Execute(RenderContext& ctx) override;
+
     private:
         void DrawMesh(const DrawItem&, const RenderContext&);
 
