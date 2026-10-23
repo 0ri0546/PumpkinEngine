@@ -355,7 +355,7 @@ int main() {
         std::println("It works bebou");
     }
 
-    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
+    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20); //rgba
 
     Particles particleSettings{};
     particleSettings.
