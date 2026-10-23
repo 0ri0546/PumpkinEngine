@@ -39,7 +39,7 @@ using namespace Pumpkin;
 
 constexpr uint64_t kDefaultTargetFps = 120;
 constexpr uint64_t kUncappedFps      = 9'999'999;
-constexpr float    kDefaultVertexW   = 2.0f;
+constexpr float    kDefaultVertexW   = 1.0f;
 constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
 
 
@@ -88,7 +88,10 @@ static void GenerateNormals(Mesh& mesh)
 // Mesh loading / drawing
 // ---------------------------------------------------------------------------
 
-static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = true) {
+static Mesh LoadMesh(
+    const std::filesystem::path& filepath,
+    Color col = Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
+    bool deduplicate = true) {
     if (filepath.extension().string() != ".obj") return Mesh{};
 
     // triangle test
@@ -182,7 +185,7 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
         mesh.vertices.emplace_back(
             Vec4f{
                 attribs.vertices[pos],
-                attribs.vertices[pos + 1] - kDefaultVertexW / 2.0f,
+                attribs.vertices[pos + 1],
                 attribs.vertices[pos + 2],
                 kDefaultVertexW
             },
@@ -224,7 +227,7 @@ static Mesh LoadMesh(const std::filesystem::path& filepath, bool deduplicate = t
         }
     }
 
-    mesh.colors = GenerateRGBA(mesh.vertices.size(), 255, 255, 255, 255);
+    mesh.colors = GenerateRGBA(mesh.vertices.size(), col.r, col.g, col.b, col.a);
     GenerateNormals(mesh);
     return mesh;
 }
@@ -320,21 +323,28 @@ int main() {
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
     // Objects creation
-    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj"), vkRoomObj   = LoadMesh("Assets/Models/VikingRoom.obj");
-    Mat4f cowModel = Mat4f::Identity(),                  vkRoomModel = Mat4f::Identity();
-    cowModel = cowModel.Translate({ -1.0f, 0.0f, 1.0f });
-    vkRoomModel = vkRoomModel.Translate({ 1.0f, 0.0f, 1.0f });
-    vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), std::sin(std::numbers::pi_v<float>), 0.0f, 1.0f }.Normalized());
+    const Color cowColor{ 255, 255, 255, 255 };
+    const Color vkRoomColor{ 255, 255, 255, 255 };
 
-    Texture cowTexture;
-    if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
+    Mesh cowObj = LoadMesh("Assets/Models/Spot.obj", cowColor);
+    Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", vkRoomColor);
+
+    Mat4f cowModel = Mat4f::Identity();
+    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 0.0f, -3.0f });
+    vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
+
+    Texture cowAlbedo;
+    if (!LoadTexture(cowAlbedo, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
     }
-    Texture vkRoomTexture;
-    if (!LoadTexture(vkRoomTexture, "Assets/Textures/VikingRoom.png")) {
+    Texture vkRoomAlbedo;
+    if (!LoadTexture(vkRoomAlbedo, "Assets/Textures/VikingRoom/Albedo.png")) {
         std::println("Impossible to load texture.");
     }
-
+    Texture vkRoomORM;
+    if (!LoadTexture(vkRoomORM, "Assets/Textures/VikingRoom/ORM.png")) {
+        std::println("Impossible to load texture.");
+    }
     Texture skyboxTexture;
     if (!LoadTexture(
         skyboxTexture,
@@ -342,6 +352,19 @@ int main() {
     )) {
         std::println("Impossible to load texture.");
     }
+
+	Material cowMaterial{
+		.baseColor = cowColor,
+		.metallic = 0.7f,
+		.roughness = 0.3f,
+		.ao = 0.5f,
+		.albedo = &cowAlbedo
+	};
+	Material vkRoomMaterial{
+		.baseColor = vkRoomColor,
+		.albedo = &vkRoomAlbedo,
+		.orm = &vkRoomORM
+	};
 
     // Font loading / text creation
     TTF_Font* font = nullptr;
@@ -355,7 +378,7 @@ int main() {
         std::println("It works bebou");
     }
 
-    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20); //rgba
+    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
 
     Particles particleSettings{};
     particleSettings.
@@ -400,8 +423,16 @@ int main() {
     renderer.AddPass<TextPass>(text);
     
     std::array scene{
-        DrawItem { &cowObj, &cowModel, &cowTexture },
-        DrawItem { &vkRoomObj, &vkRoomModel, &vkRoomTexture }
+        DrawItem { 
+            .mesh = &cowObj,
+            .model = &cowModel,
+			.material = &cowMaterial
+        },
+        DrawItem {
+            .mesh = &vkRoomObj,
+            .model = &vkRoomModel,
+            .material = &vkRoomMaterial
+        },
     };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);

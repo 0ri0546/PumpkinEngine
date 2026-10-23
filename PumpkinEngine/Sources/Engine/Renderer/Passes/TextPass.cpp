@@ -4,9 +4,14 @@
 #include <algorithm>
 #include <SDL3/SDL.h>
 
+#include <Utils/ThreadPool.hpp>
+
 namespace Pumpkin {
     void TextPass::DrawText(const FrameBuffer& fb, const Text& text) {
         if (!fb.pixels || !text.text || !text.surface)
+            return;
+
+        if (!text.surface)
             return;
 
         if (!SDL_LockSurface(text.surface))
@@ -23,55 +28,60 @@ namespace Pumpkin {
             text.y + text.surface->h
         );
 
-        const auto* pixels =
-            static_cast<const uint32_t*>(text.surface->pixels);
+        if (startX >= endX || startY >= endY) {
+            SDL_UnlockSurface(text.surface);
+            return;
+        }
 
-        const auto* srcFormat =
-            SDL_GetPixelFormatDetails(text.surface->format);
+        const auto* pixels = static_cast<const uint32_t*>(text.surface->pixels);
+        const int srcStride = text.surface->pitch / sizeof(uint32_t);
 
-        for (int py = startY; py < endY; ++py) {
-            for (int px = startX; px < endX; ++px) {
-                const int sx = px - text.x;
-                const int sy = py - text.y;
+        // Format lookups done once, not per pixel
+        const SDL_PixelFormatDetails* srcFormat = SDL_GetPixelFormatDetails(text.surface->format);
+        const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(SDL_PIXELFORMAT_ABGR8888);
 
-                const uint32_t pixel =
-                    pixels[sy * (text.surface->pitch / sizeof(uint32_t)) + sx];
+        // Blend a range of rows
+        const auto drawRows = [&](int rowBegin, int rowEnd) {
+            for (int py = rowBegin; py < rowEnd; ++py) {
+                const uint32_t* srcRow = pixels + (py - text.y) * srcStride;
+                Uint32* dstRow = fb.pixels + py * fb.width;
 
-                Uint8 r, g, b, a;
-                SDL_GetRGBA(pixel, srcFormat, nullptr, &r, &g, &b, &a);
+                for (int px = startX; px < endX; ++px) {
+                    Uint8 r, g, b, a;
+                    SDL_GetRGBA(srcRow[px - text.x], srcFormat, nullptr, &r, &g, &b, &a);
 
-                if (a == 0)
-                    continue;
+                    if (a == 0)
+                        continue;
 
-                uint32_t& dst = fb.pixels[py * fb.width + px];
+                    Uint32& dst = dstRow[px];
 
-                // Framebuffer : 0xAARRGGBB
-                const Uint8 dr = (dst >> 16) & 0xFF;
-                const Uint8 dg = (dst >> 8) & 0xFF;
-                const Uint8 db = dst & 0xFF;
-                const Uint8 da = (dst >> 24) & 0xFF;
+                    Uint8 dr, dg, db, da;
+                    SDL_GetRGBA(dst, dstFormat, nullptr, &dr, &dg, &db, &da);
 
-                const unsigned invAlpha = 255 - a;
+                    const float alpha = a / 255.0f;
+                    const float inv = 1.0f - alpha;
 
-                const Uint8 outR = static_cast<Uint8>(
-                    (r * a + dr * invAlpha + 127) / 255
-                    );
-                const Uint8 outG = static_cast<Uint8>(
-                    (g * a + dg * invAlpha + 127) / 255
-                    );
-                const Uint8 outB = static_cast<Uint8>(
-                    (b * a + db * invAlpha + 127) / 255
-                    );
-                const Uint8 outA = static_cast<Uint8>(
-                    a + (da * invAlpha + 127) / 255
-                    );
+                    const auto outR = static_cast<Uint8>(r * alpha + dr * inv);
+                    const auto outG = static_cast<Uint8>(g * alpha + dg * inv);
+                    const auto outB = static_cast<Uint8>(b * alpha + db * inv);
+                    const auto outA = static_cast<Uint8>(a + da * inv);
 
-                dst =
-                    (static_cast<uint32_t>(outA) << 24) |
-                    (static_cast<uint32_t>(outR) << 16) |
-                    (static_cast<uint32_t>(outG) << 8) |
-                    static_cast<uint32_t>(outB);
+                    dst = SDL_MapRGBA(dstFormat, nullptr, outR, outG, outB, outA);
+                }
             }
+        };
+
+        constexpr int kChunkRows = 16;
+        const int rows = endY - startY;
+        const int chunks = (rows + kChunkRows - 1) / kChunkRows;
+
+        if (chunks <= 1) {
+            drawRows(startY, endY);
+        } else {
+            ParallelFor(GetPool(), static_cast<size_t>(chunks), [&](size_t c) {
+                const int begin = startY + static_cast<int>(c) * kChunkRows;
+                drawRows(begin, std::min(endY, begin + kChunkRows));
+            });
         }
 
         SDL_UnlockSurface(text.surface);

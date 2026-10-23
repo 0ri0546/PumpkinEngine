@@ -1,7 +1,5 @@
 #pragma once
 
-// Pixel-level helpers shared by the rasterizer's draw code (Rasterizer.inl).
-
 #include <Renderer/Types.hpp>
 #include <Utils/SIMDTraits.hpp>
 

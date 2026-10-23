@@ -35,14 +35,12 @@ namespace Pumpkin {
         const FrameBuffer& fb,
         DepthBuffer& db,
         Shader& shader,
-        const Texture& texture
+        const DrawItem& item
     ) {
         static constexpr Rasterizer rasterizer{
-            .DepthTest = DepthTestMode::Less,
-            .AlphaBlend = BlendMode::Alpha,
             .Projection = CameraType::Orthographic,
             .BilinearFiltering = true
         };
-        rasterizer.Rasterize(batch, fb, db, shader, texture);
+        rasterizer.Rasterize(batch, fb, db, shader, item);
     }
 }

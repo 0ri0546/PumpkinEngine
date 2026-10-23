@@ -7,6 +7,8 @@
 #include <SDL3/SDL_ttf.h>
 
 namespace Pumpkin {
+	struct Texture;
+
     // Plane: a value that changes in a straight line across the screen.
     struct Plane {
         float start; // value at the first pixel
@@ -51,12 +53,38 @@ namespace Pumpkin {
 		Multiply
 	};
 
+	enum class ShaderId {
+		PBR,
+		BlinnPhong,
+        Lambert,
+		VertexColor
+	};
+
     // 8-bit color depth
     struct alignas(4) Color {
         uint8_t r{ 0 };
         uint8_t g{ 0 };
         uint8_t b{ 0 };
         uint8_t a{ 255 };
+    };
+
+    struct Material {
+        // Factors
+        Color baseColor{ 255, 255, 255, 255 };
+        float metallic = 1.0f;
+        float roughness = 1.0f;
+        float ao = 1.0f;
+
+        // Texture slots
+        const Texture* albedo = nullptr;
+        const Texture* normal = nullptr;
+        const Texture* orm = nullptr; // R = AO, G = roughness, B = metallic
+
+        // Pipeline state
+        ShaderId      shader = ShaderId::PBR;
+        DepthTestMode depthTest = DepthTestMode::Less;
+        BlendMode     blend = BlendMode::Alpha;
+        bool          depthWrite = true;
     };
 
     struct FrameBuffer {
@@ -86,16 +114,54 @@ namespace Pumpkin {
             this->text = text;
             this->font = font;
             this->x = x, this->y = y;
+            this->color = { color.b, color.g, color.r, color.a };
             this->surface = TTF_RenderText_Blended(
                 font,
                 text,
                 0,
-                color
+                this->color
             );
-            this->color = { color.b, color.g, color.r, color.a };
             this->fontSize = size;
             TTF_SetFontSize(this->font, this->fontSize);
         }
+
+        Text& SetSize(float size) {
+            if (size <= 0.0f)
+                return *this;
+            fontSize = size;
+            return *this;
+        }
+
+        Text& SetFont(TTF_Font* newFont) {
+            font = newFont;
+            return *this;
+        }
+
+        Text& SetText(const char* txt) {
+            text = txt;
+            return *this;
+        }
+
+        Text& SetColor(SDL_Color rgba) {
+            color = { rgba.b, rgba.g, rgba.r, rgba.a };
+            return *this;
+        }
+
+        Text& SetPosition(int x, int y) {
+            this->x = x,this->y = y;
+            return *this;
+        }
+
+        Text& Build() {
+            TTF_SetFontSize(font, fontSize);
+            surface = TTF_RenderText_Blended(font, text, 0, color);
+            return *this;
+        }
+
+        void Move(int x_dist, int y_dist) {
+            this->x += x_dist, this->y += y_dist;
+        }
+
         float fontSize;
         int x, y;
         SDL_Color color{};

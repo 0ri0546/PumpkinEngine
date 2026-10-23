@@ -11,9 +11,9 @@
 
 namespace Pumpkin {
     struct DrawItem {
-        Mesh*          mesh;
-        Mat4f*         model;
-        const Texture* texture;
+        const Mesh*     mesh;
+        const Mat4f*    model;
+		const Material* material;
     };
 
     struct RenderContext {

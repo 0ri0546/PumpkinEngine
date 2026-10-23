@@ -39,9 +39,9 @@ namespace Pumpkin {
     }
 
     [[nodiscard]] ThreadPool& GetPool() {
-        // Max threads - 2, counting the calling thread.
+        // Max threads - 1, counting the calling thread.
         static const unsigned hw = std::max(1u, std::thread::hardware_concurrency());
-        static const unsigned total = hw > 2 ? hw - 2 : 1;
+        static const unsigned total = hw > 2 ? hw - 1 : 1;
         static ThreadPool pool(total - 1);
         return pool;
     }

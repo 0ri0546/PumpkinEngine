@@ -138,13 +138,13 @@ namespace Pumpkin {
                         FastAsin(ray[1] * invLength)
                         / Pi + 0.5f;
 
-                    const uint32_t texel =
+                    const Color texel =
                         SampleTexture(m_texture, u, v);
 
-                    const uint32_t r = (texel >> 24) & 0xFF;
-                    const uint32_t g = (texel >> 16) & 0xFF;
-                    const uint32_t b = (texel >> 8) & 0xFF;
-                    const uint32_t a = texel & 0xFF;
+                    const uint32_t r = texel.r;
+                    const uint32_t g = texel.g;
+                    const uint32_t b = texel.b;
+                    const uint32_t a = texel.a;
 
                     dst[x] = ToRGBA(
                         static_cast<float>(r),
