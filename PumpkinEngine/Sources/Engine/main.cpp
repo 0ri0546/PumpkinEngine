@@ -33,6 +33,7 @@
 #include <Renderer/Particles.hpp>
 #include <Renderer/ParticleSystem.hpp>
 #include <Renderer/Passes/ParticlePass.hpp>
+#include <Renderer/Passes/SkyboxPass.hpp>
 
 using namespace Pumpkin;
 
@@ -324,12 +325,21 @@ int main() {
     cowModel = cowModel.Translate({ -1.0f, 0.0f, 1.0f });
     vkRoomModel = vkRoomModel.Translate({ 1.0f, 0.0f, 1.0f });
     vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), std::sin(std::numbers::pi_v<float>), 0.0f, 1.0f }.Normalized());
+
     Texture cowTexture;
     if (!LoadTexture(cowTexture, "Assets/Textures/SpotTexture.png")) {
         std::println("Impossible to load texture.");
     }
     Texture vkRoomTexture;
     if (!LoadTexture(vkRoomTexture, "Assets/Textures/VikingRoom.png")) {
+        std::println("Impossible to load texture.");
+    }
+
+    Texture skyboxTexture;
+    if (!LoadTexture(
+        skyboxTexture,
+        "Assets/Textures/Skybox.png"
+    )) {
         std::println("Impossible to load texture.");
     }
 
@@ -384,6 +394,7 @@ int main() {
 
     // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
+    renderer.AddPass<SkyboxPass>(skyboxTexture);
     renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
     renderer.AddPass<GeometryPass>();
     renderer.AddPass<TextPass>(text);
