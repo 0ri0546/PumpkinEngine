@@ -1,4 +1,7 @@
+
 #pragma once
+
+#include <vector>
 
 #include <Renderer/RenderPass.hpp>
 
@@ -17,5 +20,12 @@ namespace Pumpkin {
 
     private:
         const Texture& m_texture;
+
+        std::vector<float> m_rayX;
+        std::vector<float> m_rayY;
+
+        int m_cachedWidth = 0;
+        int m_cachedHeight = 0;
+        float m_cachedFov = -1.0f;
     };
 }
