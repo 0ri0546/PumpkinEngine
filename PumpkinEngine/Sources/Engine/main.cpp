@@ -18,6 +18,7 @@
 #include <Renderer/Fragment.hpp>
 #include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Renderer.hpp>
+#include <Renderer/TerrainGenerator.hpp>
 #include <Renderer/Shaders.hpp>
 #include <Renderer/Texture.hpp>
 #include <Renderer/Transform.hpp>
@@ -331,7 +332,7 @@ int main() {
     Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", vkRoomColor);
 
     Mat4f cowModel = Mat4f::Identity();
-    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 0.0f, -3.0f });
+    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 3.0f, -3.0f });
     vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
 
     Texture cowAlbedo;
@@ -360,13 +361,49 @@ int main() {
 		.roughness = 0.3f,
 		.ao = 0.5f,
 		.albedo = &cowAlbedo,
-		.shader = ShaderId::Toon //test avc cartoon shader, tu peux retirer si tu veux
+		.shader = ShaderId::BlinnPhong //test avc cartoon shader, tu peux retirer si tu veux
 	};
 	Material vkRoomMaterial{
 		.baseColor = vkRoomColor,
 		.albedo = &vkRoomAlbedo,
 		.orm = &vkRoomORM
 	};
+
+    TerrainConfig terrainConfig{
+    .cellsX = 128,
+    .cellsZ = 128,
+    .sizeX = 20.0f,
+    .sizeZ = 20.0f,
+    .minHeight = -2.0f,
+    .maxHeight = 5.0f,
+    .baseHeight = 1.5f,
+    .noiseScale = 0.18f,
+    .noiseOctaves = 4,
+    .persistence = 0.5f,
+    .lacunarity = 2.0f,
+    .seed = 41,
+    .waterLevel = 0.20f,
+    .sandLevel = 0.35f,
+    .grassLevel = 0.35f,
+    .rockLevel = 0.45f,
+    .snowLevel = 0.72f
+    };
+
+    Mesh terrainMesh = GenerateTerrain(terrainConfig);
+    Mesh waterMesh = GenerateWater(terrainConfig);
+
+    Mat4f terrainModel = Mat4f::Identity();
+    Mat4f waterModel = Mat4f::Identity();
+
+    Material terrainMaterial{
+        .baseColor = { 255, 255, 255, 255 },
+        .shader = ShaderId::PBR
+    };
+
+    Material waterMaterial{
+    .baseColor = { 255, 255, 255, 255 },
+    .shader = ShaderId::VertexColor
+    };
 
     // Font loading / text creation
     TTF_Font* font = nullptr;
@@ -427,16 +464,26 @@ int main() {
     renderer.AddPass<TextPass>(text);
     
     std::array scene{
-        DrawItem { 
+        DrawItem{
+            .mesh = &waterMesh,
+            .model = &waterModel,
+            .material = &waterMaterial
+        },
+        DrawItem{
+            .mesh = &terrainMesh,
+            .model = &terrainModel,
+            .material = &terrainMaterial
+        },
+        DrawItem{
             .mesh = &cowObj,
             .model = &cowModel,
-			.material = &cowMaterial
+            .material = &cowMaterial
         },
-        DrawItem {
+        DrawItem{
             .mesh = &vkRoomObj,
             .model = &vkRoomModel,
             .material = &vkRoomMaterial
-        },
+        }
     };
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);

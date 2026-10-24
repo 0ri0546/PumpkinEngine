@@ -1,4 +1,4 @@
-add_executable(PumpkinEngine main.cpp "Renderer/Camera.cpp" "Renderer/ParticleSystem.hpp" "Renderer/Passes/ParticlePass.cpp")
+add_executable(PumpkinEngine main.cpp "Renderer/Camera.cpp" "Renderer/ParticleSystem.hpp" "Renderer/Passes/ParticlePass.cpp" "Renderer/TerrainGenerator.cpp")
 
 set_target_properties(PumpkinEngine PROPERTIES OUTPUT_NAME PumpkinEngine)
 set_target_properties(PumpkinEngine PROPERTIES PREFIX "")
