@@ -331,8 +331,8 @@ int main() {
     Mesh cowObj = LoadMesh("Assets/Models/Spot.obj", cowColor);
     Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", vkRoomColor);
 
-    Mat4f cowModel = Mat4f::Identity();
-    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 3.0f, -3.0f });
+    Mat4f cowModel = Mat4f::Translate({ 0.0f, 7.0f, 0.0f });
+    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 7.0f, -3.0f });
     vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
 
     Texture cowAlbedo;
@@ -370,10 +370,10 @@ int main() {
 	};
 
     TerrainConfig terrainConfig{
-    .cellsX = 128,
-    .cellsZ = 128,
-    .sizeX = 20.0f,
-    .sizeZ = 20.0f,
+    .cellsX = 256,
+    .cellsZ = 256,
+    .sizeX = 50.0f,
+    .sizeZ = 50.0f,
     .minHeight = -2.0f,
     .maxHeight = 5.0f,
     .baseHeight = 1.5f,
@@ -404,6 +404,7 @@ int main() {
     .baseColor = { 255, 255, 255, 255 },
     .shader = ShaderId::VertexColor
     };
+    std::cout << "vertices terrain : " << terrainMesh.vertices.size() << ", indices : " << terrainMesh.indices.size() << '\n';
 
     // Font loading / text creation
     TTF_Font* font = nullptr;

@@ -82,21 +82,32 @@ namespace Pumpkin {
         }
 
         Color GetColor(float height, float slope, const TerrainConfig& config) {
-
             const float range = config.maxHeight - config.minHeight;
-            const float t = (height - config.minHeight) / range;
 
-            if (t >= config.snowLevel)
+            const auto GetLevel = [&](float relativeLevel) {
+                return std::clamp(
+                    config.baseHeight + (relativeLevel - 0.5f) * range,
+                    config.minHeight,
+                    config.maxHeight
+                );
+                };
+
+            const float sandHeight = GetLevel(config.sandLevel);
+            const float grassHeight = GetLevel(config.grassLevel);
+            const float rockHeight = GetLevel(config.rockLevel);
+            const float snowHeight = GetLevel(config.snowLevel);
+
+            if (height >= snowHeight)
                 return Snow;
 
-            if (slope < 0.75f && t >= config.grassLevel)
+            if (height >= rockHeight)
                 return Rock;
 
-            if (t < config.sandLevel)
+            if (slope < 0.75f && height >= grassHeight)
+                return Rock;
+
+            if (height < sandHeight)
                 return Sand;
-
-            if (t >= config.rockLevel)
-                return Rock;
 
             return Grass;
         }
@@ -138,7 +149,6 @@ namespace Pumpkin {
         const float startZ = -config.sizeZ * 0.5f;
         const float heightRange = config.maxHeight - config.minHeight;
 
-        // Génération du relief.
         for (int z = 0; z < verticesZ; ++z) {
             for (int x = 0; x < verticesX; ++x) {
                 const float px = startX + x * stepX;
@@ -380,5 +390,23 @@ namespace Pumpkin {
         }
 
         return mesh;
+    }
+
+    float GetTerrainLevel(
+        float baseHeight,
+        float minHeight,
+        float maxHeight,
+        float relativeLevel
+    ) {
+        const float range = maxHeight - minHeight;
+
+        const float normalizedBase =
+            (baseHeight - minHeight) / range;
+
+        return std::clamp(
+            baseHeight + (relativeLevel - 0.5f) * range,
+            minHeight,
+            maxHeight
+        );
     }
 }

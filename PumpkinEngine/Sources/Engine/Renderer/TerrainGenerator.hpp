@@ -35,4 +35,11 @@ namespace Pumpkin {
     );
 
     [[nodiscard]] Mesh GenerateWater(const TerrainConfig& config);
+
+    [[nodiscard]] float GetTerrainLevel(
+        float baseHeight,
+        float minHeight,
+        float maxHeight,
+        float relativeLevel
+    );
 }

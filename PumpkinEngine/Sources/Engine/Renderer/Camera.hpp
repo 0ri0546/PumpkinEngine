@@ -8,7 +8,7 @@
 namespace Pumpkin {
 
     struct Camera {
-        Vec3f pos{ 0.0f, 0.0f, 4.0f };
+        Vec3f pos{ 0.0f, 7.0f, 4.0f };
         Vec3f front{ 0.0f, 0.0f, -1.0f };
         Vec3f up{ 0.0f, 1.0f, 0.0f };
         Vec3f right{ 1.0f, 0.0f, 0.0f };
