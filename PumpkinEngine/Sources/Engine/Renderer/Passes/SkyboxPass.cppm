@@ -1,0 +1,36 @@
+export module Pumpkin.Renderer.Passes.Skybox;
+
+import std;
+
+import Pumpkin.Renderer.RenderPass;
+import Pumpkin.Renderer.Texture;
+import Pumpkin.Renderer.Types;
+
+export namespace Pumpkin {
+    class SkyboxPass final : public RenderPass {
+    public:
+        explicit SkyboxPass(const Texture& texture)
+            : m_texture(texture) {
+        }
+
+        [[nodiscard]] std::string_view Name() const override {
+            return "Skybox";
+        }
+
+        void Execute(RenderContext& ctx) override;
+
+    private:
+        const Texture& m_texture;
+
+        std::vector<float> m_rayX;
+        std::vector<float> m_rayY;
+
+        int m_cachedWidth = 0;
+        int m_cachedHeight = 0;
+        float m_cachedFov = -1.0f;
+
+        std::vector<std::uint32_t> m_packed;
+        const void* m_packedSrc = nullptr;
+        int m_packedW = 0, m_packedH = 0;
+    };
+}

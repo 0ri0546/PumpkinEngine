@@ -1,15 +1,12 @@
 #pragma once
 
-#include <Renderer/Binning.hpp>
-#include <Renderer/RasterizerDetail.hpp>
-#include <Utils/ThreadPool.hpp>
+import Pumpkin.Renderer.Fragment;
+import Pumpkin.Renderer.Passes.Binning;
+import Pumpkin.Renderer.RasterizerDetail;
+import Pumpkin.Renderer.Texture;
+import Pumpkin.Utils.ThreadPool;
 
-#include <algorithm>
-#include <atomic>
-#include <cmath>
-#include <functional>
-#include <span>
-#include <vector>
+import std;
 
 namespace Pumpkin {
     namespace Detail {
@@ -18,7 +15,7 @@ namespace Pumpkin {
             static BinData bins;
             return bins;
         }
-        
+
         using TexelSIMD = __m256i;
 
         // 8 texels at once: wrap, UV -> pixel, clamp, gather. Returns 8 packed pixels in the texture's layout.
@@ -225,7 +222,7 @@ namespace Pumpkin {
 
         const auto width = ctx.fb.width;
         float* depth = ctx.db.pixels.data();
-        uint32_t* pixels = ctx.fb.pixels;
+        std::uint32_t* pixels = ctx.fb.pixels;
 
         const std::uint8_t isToon = (item.material && item.material->shader == ShaderId::Toon) ? 1 : 0;
 

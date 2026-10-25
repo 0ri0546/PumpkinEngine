@@ -1,13 +1,12 @@
-#include <Renderer/MeshLoader.hpp>
+module Pumpkin.Renderer.MeshLoader;
 
-#include <algorithm>
-#include <cstddef>
-#include <cstdint>
-#include <print>
-#include <unordered_map>
+import Pumpkin.Renderer.Types;
+import Pumpkin.Utils.ObjLoader;
+import Pumpkin.Utils.Utils;
 
-#include <Utils/ObjParser.hpp>
-#include <Utils/Utils.hpp>
+import Pumpkin.Math.Vec;
+
+import std;
 
 namespace Pumpkin {
     namespace {

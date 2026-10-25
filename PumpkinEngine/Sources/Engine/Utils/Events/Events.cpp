@@ -1,5 +1,10 @@
-#include "Events.hpp"
-#include <print>
+module;
+
+#include <SDL3/SDL.h>
+
+module Pumpkin.Utils.Events;
+
+import std;
 
 namespace Pumpkin {
 
@@ -28,10 +33,10 @@ namespace Pumpkin {
         float forward = 0.0f;
         float right = 0.0f;
 
-        if (state[SDL_SCANCODE_W]) forward += 1.0f;
-        if (state[SDL_SCANCODE_S]) forward -= 1.0f;
-        if (state[SDL_SCANCODE_D]) right += 1.0f;
-        if (state[SDL_SCANCODE_A]) right -= 1.0f;
+        if (state[SDL_Scancode::SDL_SCANCODE_W]) forward += 1.0f;
+        if (state[SDL_Scancode::SDL_SCANCODE_S]) forward -= 1.0f;
+        if (state[SDL_Scancode::SDL_SCANCODE_D]) right += 1.0f;
+        if (state[SDL_Scancode::SDL_SCANCODE_A]) right -= 1.0f;
 
         camera.move(forward, right, deltaTime);
     }

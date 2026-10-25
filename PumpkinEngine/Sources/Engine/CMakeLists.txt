@@ -1,4 +1,4 @@
-add_executable(PumpkinEngine main.cpp "Renderer/Camera.cpp" "Renderer/ParticleSystem.hpp" "Renderer/Passes/ParticlePass.cpp" "Renderer/TerrainGenerator.cpp")
+add_executable(PumpkinEngine main.cpp)
 
 set_target_properties(PumpkinEngine PROPERTIES OUTPUT_NAME PumpkinEngine)
 set_target_properties(PumpkinEngine PROPERTIES PREFIX "")
@@ -7,10 +7,16 @@ set_target_properties(PumpkinEngine PROPERTIES
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+file(GLOB_RECURSE RENDER_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/*.cppm)
+
+target_sources(PumpkinEngine PRIVATE
+        FILE_SET engine_render_modules TYPE CXX_MODULES
+        FILES ${RENDER_MODULES}
+)
+
 file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 
 target_sources(PumpkinEngine PRIVATE ${SOURCES})
-target_include_directories(PumpkinEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
 
 if(WIN32)
     add_custom_command(TARGET PumpkinEngine POST_BUILD

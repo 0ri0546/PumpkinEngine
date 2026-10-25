@@ -1,10 +1,8 @@
-#include <Renderer/Binning.hpp>
+module Pumpkin.Renderer.Passes.Binning;
 
-#include <Utils/ThreadPool.hpp>
+import Pumpkin.Utils.ThreadPool;
 
-#include <algorithm>
-#include <array>
-#include <bit>
+import std;
 
 namespace Pumpkin {
     static constexpr std::size_t kChunksPerJob = 32; // binning work unit

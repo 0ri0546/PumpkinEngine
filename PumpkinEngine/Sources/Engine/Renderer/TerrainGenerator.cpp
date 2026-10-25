@@ -1,13 +1,10 @@
-#include <Renderer/TerrainGenerator.hpp>
+module Pumpkin.Renderer.TerrainGenerator;
 
-#include <algorithm>
-#include <array>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <limits>
-#include <stdexcept>
-#include <vector>
+import Pumpkin.Renderer.Types;
+
+import Pumpkin.Math.Vec;
+
+import std;
 
 namespace Pumpkin {
     namespace {

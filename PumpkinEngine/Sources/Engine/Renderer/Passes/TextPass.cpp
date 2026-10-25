@@ -1,10 +1,12 @@
+module;
 
-#include "TextPass.hpp"
-
-#include <algorithm>
 #include <SDL3/SDL.h>
 
-#include <Utils/ThreadPool.hpp>
+module Pumpkin.Renderer.Passes.Text;
+
+import Pumpkin.Utils.ThreadPool;
+
+import std;
 
 namespace Pumpkin {
     void TextPass::DrawText(const FrameBuffer& fb, const Text& text) {
@@ -33,17 +35,17 @@ namespace Pumpkin {
             return;
         }
 
-        const auto* pixels = static_cast<const uint32_t*>(text.surface->pixels);
-        const int srcStride = text.surface->pitch / sizeof(uint32_t);
+        const auto* pixels = static_cast<const std::uint32_t*>(text.surface->pixels);
+        const int srcStride = text.surface->pitch / sizeof(std::uint32_t);
 
         // Format lookups done once, not per pixel
         const SDL_PixelFormatDetails* srcFormat = SDL_GetPixelFormatDetails(text.surface->format);
-        const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(SDL_PIXELFORMAT_ABGR8888);
+        const SDL_PixelFormatDetails* dstFormat = SDL_GetPixelFormatDetails(SDL_PixelFormat::SDL_PIXELFORMAT_ABGR8888);
 
         // Blend a range of rows
         const auto drawRows = [&](int rowBegin, int rowEnd) {
             for (int py = rowBegin; py < rowEnd; ++py) {
-                const uint32_t* srcRow = pixels + (py - text.y) * srcStride;
+                const std::uint32_t* srcRow = pixels + (py - text.y) * srcStride;
                 Uint32* dstRow = fb.pixels + py * fb.width;
 
                 for (int px = startX; px < endX; ++px) {
@@ -78,7 +80,7 @@ namespace Pumpkin {
         if (chunks <= 1) {
             drawRows(startY, endY);
         } else {
-            ParallelFor(GetPool(), static_cast<size_t>(chunks), [&](size_t c) {
+            ParallelFor(GetPool(), static_cast<std::size_t>(chunks), [&](std::size_t c) {
                 const int begin = startY + static_cast<int>(c) * kChunkRows;
                 drawRows(begin, std::min(endY, begin + kChunkRows));
             });

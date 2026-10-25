@@ -1,9 +1,9 @@
-#include <Renderer/PrimitiveAssembly.hpp>
+module Pumpkin.Renderer.PrimitiveAssembly;
 
-#include <Utils/ThreadPool.hpp>
+import Pumpkin.Renderer.Types;
+import Pumpkin.Utils.ThreadPool;
 
-#include <algorithm>
-#include <cmath>
+import std;
 
 namespace Pumpkin {
     static constexpr float kFrontFaceSign = 1.0f;
