@@ -109,29 +109,16 @@ export namespace Pumpkin::ECS {
             if constexpr (sizeof...(Components) == 0)
                 return {};
 
-            std::size_t max_id = 0;
-            auto track_max = [&]<typename T>() {
-                if (HasPool<T>()) {
-                    const auto& entities = Pool<T>().Entities();
-                    if (!entities.empty()) {
-                        max_id = std::max(max_id, static_cast<std::size_t>(entities.back().index));
-                    }
-                }
-            };
-            (track_max.template operator()<Components>(), ...);
-
-            if (max_id == 0)
-                return {};
-
-            std::vector<bool> visited(max_id + 1, false);
+            std::vector<bool> visited; // indexed by Entity::index, grown on demand
             std::vector<Entity> result;
-            result.reserve(max_id + 1);
 
             auto collect = [&]<typename T>() {
                 if (!HasPool<T>())
                     return;
                 for (const auto entity : Pool<T>().Entities()) {
                     const std::size_t idx = entity.index;
+                    if (idx >= visited.size())
+                        visited.resize(std::max(idx + 1, visited.size() * 2), false);
                     if (!visited[idx]) {
                         visited[idx] = true;
                         result.push_back(entity);
@@ -153,9 +140,13 @@ export namespace Pumpkin::ECS {
                 std::span<const Entity>::iterator it;
                 std::span<const Entity>::iterator end;
                 std::tuple<ComponentPool<Components>*...> pools;
+                const IComponentPool* driverPool;
 
                 void SkipToValid() {
-                    while (it != end && !(std::get<ComponentPool<Components>*>(pools)->Contains(*it) && ...))
+                    const auto has = [this](const IComponentPool* pool) {
+                        return pool == driverPool || pool->Contains(*it);
+                    };
+                    while (it != end && !(has(std::get<ComponentPool<Components>*>(pools)) && ...))
                         ++it;
                 }
 
@@ -174,25 +165,28 @@ export namespace Pumpkin::ECS {
 
                 value_type operator*() const {
                     const Entity entity = *it;
-                    return value_type(entity, std::get<ComponentPool<Components>*>(pools)->Get(entity)...);
+                    // Fetch is safe, membership was validated by SkipToValid
+                    return value_type(entity, std::get<ComponentPool<Components>*>(pools)->Fetch(entity)...);
                 }
             };
 
-            QueryView(std::span<const Entity> driver, ComponentPool<Components>*... pools)
-                : m_driver(driver),
+            QueryView(const IComponentPool* driverPool, std::span<const Entity> driver, ComponentPool<Components>*... pools)
+                : m_driverPool(driverPool),
+                  m_driver(driver),
                   m_pools(pools...) {}
 
             Iterator begin() const {
-                Iterator iter{m_driver.begin(), m_driver.end(), m_pools};
+                Iterator iter{m_driver.begin(), m_driver.end(), m_pools, m_driverPool};
                 iter.SkipToValid();
                 return iter;
             }
 
             Iterator end() const {
-                return {m_driver.end(), m_driver.end(), m_pools};
+                return {m_driver.end(), m_driver.end(), m_pools, m_driverPool};
             }
 
         private:
+            const IComponentPool* m_driverPool;
             std::span<const Entity> m_driver;
             std::tuple<ComponentPool<Components>*...> m_pools;
         };
@@ -202,7 +196,7 @@ export namespace Pumpkin::ECS {
             static_assert(sizeof...(Components) > 0, "View requires at least one component");
 
             if (!(HasPool<Components>() && ...))
-                return QueryView<Components...>({}, static_cast<ComponentPool<Components>*>(nullptr)...);
+                return QueryView<Components...>(nullptr, {}, static_cast<ComponentPool<Components>*>(nullptr)...);
 
             const std::array<IComponentPool*, sizeof...(Components)> pools{&Pool<Components>()...};
 
@@ -212,7 +206,7 @@ export namespace Pumpkin::ECS {
                     smallest = pool;
             }
 
-            return QueryView<Components...>(smallest->Entities(), &Pool<Components>()...);
+            return QueryView<Components...>(smallest, smallest->Entities(), &Pool<Components>()...);
         }
 
         void RemoveEntity(Entity entity);

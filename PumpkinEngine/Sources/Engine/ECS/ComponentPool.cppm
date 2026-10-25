@@ -50,6 +50,10 @@ export namespace Pumpkin::ECS {
             return m_storage.Get(entity);
         }
 
+        T& Fetch(Entity entity) {
+            return m_storage.Fetch(entity);
+        }
+
         T* TryGet(Entity entity) {
             return m_storage.TryGet(entity);
         }

@@ -23,6 +23,9 @@ export namespace Pumpkin::ECS {
 
         template <Component T, typename... Args>
         T& Add(Entity entity, Args&&... args) {
+            if (!IsAlive(entity)) [[unlikely]]
+                throw std::invalid_argument("World::Add: entity is not alive");
+
             return m_registry.Pool<T>().Emplace(entity, std::forward<Args>(args)...);
         }
 

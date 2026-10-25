@@ -43,5 +43,16 @@ namespace Pumpkin::ECS {
 
     void World::Clear() {
         m_registry.Clear();
+
+        // Invalidates every live handle
+        m_freeIndices.clear();
+        m_freeIndices.reserve(m_nextIndex - 1);
+        for (std::uint32_t i = m_nextIndex - 1; i >= 1; --i) {
+            if (m_alive[i]) {
+                m_alive[i] = 0;
+                ++m_generations[i];
+            }
+            m_freeIndices.push_back(i);
+        }
     }
 } // namespace Pumpkin::ECS

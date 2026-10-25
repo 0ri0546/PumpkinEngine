@@ -17,7 +17,13 @@ export namespace Pumpkin::ECS {
 
             auto& sparse_slot = m_sparse[entity.index];
             if (sparse_slot != 0) [[unlikely]] {
-                return m_dense[sparse_slot - 1];
+                const auto dense_index = sparse_slot - 1;
+                if (m_denseEntities[dense_index] == entity)
+                    return m_dense[dense_index]; // already present
+
+                m_denseEntities[dense_index] = entity;
+                m_dense[dense_index] = T(std::forward<Args>(args)...);
+                return m_dense[dense_index];
             }
 
             const auto index = m_dense.size();
@@ -59,7 +65,12 @@ export namespace Pumpkin::ECS {
         }
 
         bool Contains(Entity entity) const {
-            return entity.index < m_sparse.size() && m_sparse[entity.index] != 0;
+            if (entity.index >= m_sparse.size())
+                return false;
+
+            const auto slot = m_sparse[entity.index];
+
+            return slot != 0 && m_denseEntities[slot - 1] == entity;
         }
 
         T& Get(Entity entity) {
@@ -73,6 +84,11 @@ export namespace Pumpkin::ECS {
             if (!Contains(entity))
                 throw std::out_of_range("SparseSet::Get: entity not present");
 
+            return m_dense[m_sparse[entity.index] - 1];
+        }
+
+        // Unchecked access: the caller guarantees Contains(entity)
+        T& Fetch(Entity entity) {
             return m_dense[m_sparse[entity.index] - 1];
         }
 
