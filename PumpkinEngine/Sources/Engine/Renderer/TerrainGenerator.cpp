@@ -1,20 +1,24 @@
-
-#include "TerrainGenerator.hpp"
+#include <Renderer/TerrainGenerator.hpp>
 
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstddef>
 #include <cstdint>
+#include <limits>
 #include <stdexcept>
+#include <vector>
 
 namespace Pumpkin {
     namespace {
+        // Biome colors
         constexpr Color Water{ 35, 145, 220, 255 };
         constexpr Color Sand{ 230, 210, 145, 255 };
         constexpr Color Grass{ 100, 190, 75, 255 };
-        constexpr Color DarkGrass{ 75, 155, 60, 255 };
         constexpr Color Rock{ 125, 115, 105, 255 };
         constexpr Color Snow{ 245, 245, 240, 255 };
+
+        // Noise
 
         float Fade(float t) {
             return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
@@ -32,15 +36,17 @@ namespace Pumpkin {
 
         float RandomValue(int x, int z, std::uint32_t seed) {
             return static_cast<float>(Hash(x, z, seed) & 0x00FFFFFFu)
-                / 8388607.5f - 1.0f;
+                * (1.0f / 8388607.5f) - 1.0f;
         }
 
         float Noise(float x, float z, std::uint32_t seed) {
-            const int x0 = static_cast<int>(std::floor(x));
-            const int z0 = static_cast<int>(std::floor(z));
+            const float fx = std::floor(x);
+            const float fz = std::floor(z);
+            const int x0 = static_cast<int>(fx);
+            const int z0 = static_cast<int>(fz);
 
-            const float tx = Fade(x - static_cast<float>(x0));
-            const float tz = Fade(z - static_cast<float>(z0));
+            const float tx = Fade(x - fx);
+            const float tz = Fade(z - fz);
 
             const float a = RandomValue(x0, z0, seed);
             const float b = RandomValue(x0 + 1, z0, seed);
@@ -53,360 +59,278 @@ namespace Pumpkin {
             return ab + (cd - ab) * tz;
         }
 
-        float FractalNoise(
-            float x,
-            float z,
-            const TerrainConfig& config,
-            float scaleMultiplier = 1.0f
-        ) {
+        float FractalNoise(float x, float z, const TerrainConfig& config,
+                           float scaleMultiplier) {
             float frequency = config.noiseScale * scaleMultiplier;
             float amplitude = 1.0f;
             float value = 0.0f;
             float totalAmplitude = 0.0f;
 
             for (int octave = 0; octave < config.noiseOctaves; ++octave) {
-                value += Noise(
-                    x * frequency,
-                    z * frequency,
-                    config.seed + static_cast<std::uint32_t>(octave) * 1013u
-                ) * amplitude;
-
+                value += Noise(x * frequency, z * frequency,
+                    config.seed + static_cast<std::uint32_t>(octave) * 1013u)
+                    * amplitude;
                 totalAmplitude += amplitude;
                 amplitude *= config.persistence;
                 frequency *= config.lacunarity;
             }
-
-            return totalAmplitude > 0.0f
-                ? value / totalAmplitude
-                : 0.0f;
+            return value / totalAmplitude; // octaves >= 1 and amplitude > 0
         }
 
-        Color GetColor(float height, float slope, const TerrainConfig& config) {
-            const float range = config.maxHeight - config.minHeight;
+        // Config helpers
 
-            const auto GetLevel = [&](float relativeLevel) {
-                return std::clamp(
-                    config.baseHeight + (relativeLevel - 0.5f) * range,
-                    config.minHeight,
-                    config.maxHeight
-                );
-                };
+        void Validate(const TerrainConfig& c) {
+            if (c.cellsX <= 0 || c.cellsZ <= 0 ||
+                c.sizeX <= 0.0f || c.sizeZ <= 0.0f ||
+                c.maxHeight <= c.minHeight ||
+                c.noiseScale <= 0.0f || c.noiseOctaves < 1) {
+                throw std::invalid_argument("Invalid terrain configuration");
+            }
+        }
 
-            const float sandHeight = GetLevel(config.sandLevel);
-            const float grassHeight = GetLevel(config.grassLevel);
-            const float rockHeight = GetLevel(config.rockLevel);
-            const float snowHeight = GetLevel(config.snowLevel);
+        struct Levels { float sand, grass, rock, snow; };
 
-            if (height >= snowHeight)
-                return Snow;
+        Levels ComputeLevels(const TerrainConfig& c) {
+            const auto Level = [&](float relative) {
+                return GetTerrainLevel(c.baseHeight, c.minHeight, c.maxHeight, relative);
+            };
+            return { Level(c.sandLevel), Level(c.grassLevel),
+                     Level(c.rockLevel), Level(c.snowLevel) };
+        }
 
-            if (height >= rockHeight)
-                return Rock;
-
-            if (slope < 0.75f && height >= grassHeight)
-                return Rock;
-
-            if (height < sandHeight)
-                return Sand;
-
+        Color GetColor(float height, float slope, const Levels& l) {
+            if (height >= l.snow) return Snow;
+            if (height >= l.rock) return Rock;
+            if (slope < 0.75f && height >= l.grass) return Rock;
+            if (height < l.sand) return Sand;
             return Grass;
+        }
+
+        // Height grid
+
+        // Cell size and world-space origin of the grid, shared by terrain and water.
+        struct Grid {
+            int vx;        // vertices per row (cellsX + 1)
+            float stepX;
+            float stepZ;
+            float startX;
+            float startZ;
+
+            explicit Grid(const TerrainConfig& c)
+                : vx(c.cellsX + 1)
+                , stepX(c.sizeX / static_cast<float>(c.cellsX))
+                , stepZ(c.sizeZ / static_cast<float>(c.cellsZ))
+                , startX(-c.sizeX * 0.5f)
+                , startZ(-c.sizeZ * 0.5f) {}
+        };
+
+        // Row-major (cellsZ+1) x (cellsX+1) height field, shared by terrain and water.
+        std::vector<float> BuildHeights(const TerrainConfig& c, const Grid& g) {
+            const int vz = c.cellsZ + 1;
+            const float halfRange = (c.maxHeight - c.minHeight) * 0.5f;
+
+            std::vector<float> heights(static_cast<std::size_t>(g.vx) * vz);
+
+            for (int z = 0; z < vz; ++z) {
+                const float pz = g.startZ + z * g.stepZ;
+                float* row = &heights[static_cast<std::size_t>(z) * g.vx];
+                for (int x = 0; x < g.vx; ++x) {
+                    const float px = g.startX + x * g.stepX;
+
+                    float e = FractalNoise(px, pz, c, 0.35f) * 0.85f +
+                              FractalNoise(px, pz, c, 1.0f) * 0.15f;
+                    e = std::copysign(std::pow(std::abs(e), 0.7f), e);
+
+                    row[x] = std::clamp(c.baseHeight + e * halfRange, c.minHeight, c.maxHeight);
+                }
+            }
+            return heights;
+        }
+
+        // Terrain meshing
+
+        // Cell range [x0, x1) x [z0, z1).
+        struct CellRange { int x0, x1, z0, z1; };
+
+        // Builds flat-shaded triangles for a range of cells.
+        Mesh BuildTerrainRange(const Grid& g, const std::vector<float>& h,
+                               const Levels& levels, const CellRange& r, AABB* bounds)
+        {
+            const float sxz = g.stepX * g.stepZ;
+
+            const std::size_t triangleCount =
+                static_cast<std::size_t>(r.x1 - r.x0) * (r.z1 - r.z0) * 2;
+
+            Mesh mesh{};
+            mesh.vertices.reserve(triangleCount * 3);
+            mesh.colors.reserve(triangleCount * 3);
+            mesh.indices.reserve(triangleCount * 3);
+
+            struct P { float x, y, z; };
+
+            // Emits one flat-shaded triangle. (nx, ny, nz) is the unnormalized face normal.
+            const auto Emit = [&](const P& p0, const P& p1, const P& p2,
+                                  float nx, float ny, float nz) {
+                const float invLen = 1.0f / std::sqrt(nx * nx + ny * ny + nz * nz);
+                const Vec3f normal{ nx * invLen, ny * invLen, nz * invLen };
+
+                const float avg = (p0.y + p1.y + p2.y) * (1.0f / 3.0f);
+                const Color color = GetColor(avg, normal[1], levels);
+
+                const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
+                for (const P* p : { &p0, &p1, &p2 }) {
+                    mesh.vertices.emplace_back(Vec4f{ p->x, p->y, p->z, 1.0f }, Vec2f{}, normal);
+                    mesh.colors.push_back(color);
+                }
+                mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2 });
+            };
+
+            float minY = std::numeric_limits<float>::max();
+            float maxY = std::numeric_limits<float>::lowest();
+
+            for (int z = r.z0; z < r.z1; ++z) {
+                const float z0 = g.startZ + z * g.stepZ;
+                const float z1 = z0 + g.stepZ;
+                const float* r0 = &h[static_cast<std::size_t>(z) * g.vx];
+                const float* r1 = r0 + g.vx;
+
+                for (int x = r.x0; x < r.x1; ++x) {
+                    const float x0 = g.startX + x * g.stepX;
+                    const float x1 = x0 + g.stepX;
+
+                    const float ha = r0[x], hb = r0[x + 1];
+                    const float hc = r1[x], hd = r1[x + 1];
+                    minY = std::min({ minY, ha, hb, hc, hd });
+                    maxY = std::max({ maxY, ha, hb, hc, hd });
+
+                    const P a{ x0, ha, z0 }, b{ x1, hb, z0 };
+                    const P c{ x0, hc, z1 }, d{ x1, hd, z1 };
+
+                    Emit(a, c, b, -g.stepZ * (hb - ha), sxz, -g.stepX * (hc - ha));
+                    Emit(b, c, d,  g.stepZ * (hc - hd), sxz, -g.stepX * (hd - hb));
+                }
+            }
+
+            if (bounds) {
+                *bounds = { Vec3f{ g.startX + r.x0 * g.stepX, minY, g.startZ + r.z0 * g.stepZ },
+                            Vec3f{ g.startX + r.x1 * g.stepX, maxY, g.startZ + r.z1 * g.stepZ } };
+            }
+            return mesh;
         }
     }
 
+    // Public API
+
     Mesh GenerateTerrain(const TerrainConfig& config) {
-        if (config.cellsX <= 0 ||
-            config.cellsZ <= 0 ||
-            config.sizeX <= 0.0f ||
-            config.sizeZ <= 0.0f ||
-            config.maxHeight <= config.minHeight ||
-            config.noiseScale <= 0.0f ||
-            config.noiseOctaves < 1) {
-            throw std::invalid_argument("Invalid terrain configuration");
+        Validate(config);
+        const Grid grid(config);
+        return BuildTerrainRange(grid, BuildHeights(config, grid), ComputeLevels(config),
+                                 { 0, config.cellsX, 0, config.cellsZ }, nullptr);
+    }
+
+    std::vector<TerrainChunk> GenerateTerrainChunks(const TerrainConfig& config, int chunkCells) {
+        Validate(config);
+        if (chunkCells <= 0) {
+            throw std::invalid_argument("Terrain chunk size must be positive");
         }
 
-        Mesh mesh{};
+        const Grid grid(config);
+        const std::vector<float> heights = BuildHeights(config, grid);
+        const Levels levels = ComputeLevels(config);
 
-        const int verticesX = config.cellsX + 1;
-        const int verticesZ = config.cellsZ + 1;
+        std::vector<TerrainChunk> chunks;
+        chunks.reserve(static_cast<std::size_t>((config.cellsX + chunkCells - 1) / chunkCells) *
+                       ((config.cellsZ + chunkCells - 1) / chunkCells));
 
-        const std::size_t vertexCount =
-            static_cast<std::size_t>(verticesX) * verticesZ;
-
-        const std::size_t triangleCount =
-            static_cast<std::size_t>(config.cellsX) *
-            config.cellsZ * 2;
-
-        std::vector<Vec3f> positions;
-        std::vector<float> heights;
-
-        positions.reserve(vertexCount);
-        heights.reserve(vertexCount);
-
-        const float stepX = config.sizeX / config.cellsX;
-        const float stepZ = config.sizeZ / config.cellsZ;
-
-        const float startX = -config.sizeX * 0.5f;
-        const float startZ = -config.sizeZ * 0.5f;
-        const float heightRange = config.maxHeight - config.minHeight;
-
-        for (int z = 0; z < verticesZ; ++z) {
-            for (int x = 0; x < verticesX; ++x) {
-                const float px = startX + x * stepX;
-                const float pz = startZ + z * stepZ;
-
-                const float continental = FractalNoise(
-                    px, pz, config, 0.35f
-                );
-
-                const float detail = FractalNoise(
-                    px, pz, config, 1.0f
-                );
-
-                float elevation =
-                    continental * 0.85f +
-                    detail * 0.15f;
-
-                elevation = std::copysign(
-                    std::pow(std::abs(elevation), 0.7f),
-                    elevation
-                );
-
-                const float height = std::clamp(
-                    config.baseHeight + elevation *
-                    (config.maxHeight - config.minHeight) * 0.5f,
-                    config.minHeight,
-                    config.maxHeight
-                );
-
-                positions.emplace_back(px, height, pz);
-                heights.push_back(height);
+        for (int z = 0; z < config.cellsZ; z += chunkCells) {
+            for (int x = 0; x < config.cellsX; x += chunkCells) {
+                TerrainChunk& chunk = chunks.emplace_back();
+                chunk.mesh = BuildTerrainRange(
+                    grid, heights, levels,
+                    { x, std::min(x + chunkCells, config.cellsX),
+                      z, std::min(z + chunkCells, config.cellsZ) },
+                    &chunk.bounds);
             }
         }
-
-        mesh.vertices.reserve(triangleCount * 3);
-        mesh.colors.reserve(triangleCount * 3);
-        mesh.indices.reserve(triangleCount * 3);
-
-        const auto AddTriangle = [&](std::uint32_t i0,
-            std::uint32_t i1,
-            std::uint32_t i2) {
-                const Vec3f& p0 = positions[i0];
-                const Vec3f& p1 = positions[i1];
-                const Vec3f& p2 = positions[i2];
-
-                Vec3f normal = Cross(p1 - p0, p2 - p0).Normalized();
-
-                if (normal[1] < 0.0f)
-                    normal = normal * -1.0f;
-
-                const float averageHeight =
-                    (heights[i0] + heights[i1] + heights[i2]) / 3.0f;
-
-                const float slope = std::clamp(normal[1], 0.0f, 1.0f);
-                const Color color = GetColor(averageHeight, slope, config);
-
-                const std::uint32_t base =
-                    static_cast<std::uint32_t>(mesh.vertices.size());
-
-                for (const Vec3f* p : { &p0, &p1, &p2 }) {
-                    mesh.vertices.emplace_back(
-                        Vec4f{ (*p)[0], (*p)[1], (*p)[2], 1.0f },
-                        Vec2f{},
-                        normal
-                    );
-
-                    mesh.colors.push_back(color);
-                }
-
-                mesh.indices.insert(
-                    mesh.indices.end(),
-                    { base, base + 1, base + 2 }
-                );
-            };
-
-        for (int z = 0; z < config.cellsZ; ++z) {
-            for (int x = 0; x < config.cellsX; ++x) {
-                const auto a = static_cast<std::uint32_t>(
-                    z * verticesX + x
-                    );
-                const auto b = a + 1;
-                const auto c = a + verticesX;
-                const auto d = c + 1;
-
-                AddTriangle(a, c, b);
-                AddTriangle(b, c, d);
-            }
-        }
-
-        return mesh;
+        return chunks;
     }
 
     Mesh GenerateWater(const TerrainConfig& config) {
-        if (config.cellsX <= 0 ||
-            config.cellsZ <= 0 ||
-            config.sizeX <= 0.0f ||
-            config.sizeZ <= 0.0f ||
-            config.maxHeight <= config.minHeight ||
-            config.noiseScale <= 0.0f ||
-            config.noiseOctaves < 1) {
-            throw std::invalid_argument("Invalid terrain configuration");
-        }
+        Validate(config);
 
-        struct Point {
-            float x;
-            float z;
-            float height;
-        };
+        const Grid g(config);
+        const float level = config.waterLevel;
+        const float waterY = level + 0.001f;
 
+        const std::vector<float> h = BuildHeights(config, g);
+
+        struct Point { float x, z, height; };
         Mesh mesh{};
 
-        const int verticesX = config.cellsX + 1;
-        const int verticesZ = config.cellsZ + 1;
-
-        const float stepX = config.sizeX / config.cellsX;
-        const float stepZ = config.sizeZ / config.cellsZ;
-        const float startX = -config.sizeX * 0.5f;
-        const float startZ = -config.sizeZ * 0.5f;
-        const float heightRange = config.maxHeight - config.minHeight;
-
-        std::vector<Point> points;
-        points.reserve(
-            static_cast<std::size_t>(verticesX) * verticesZ
-        );
-
-        for (int z = 0; z < verticesZ; ++z) {
-            for (int x = 0; x < verticesX; ++x) {
-                const float px = startX + x * stepX;
-                const float pz = startZ + z * stepZ;
-
-                const float continental =
-                    FractalNoise(px, pz, config, 0.35f);
-
-                const float detail =
-                    FractalNoise(px, pz, config, 1.0f);
-
-                float elevation =
-                    continental * 0.85f + detail * 0.15f;
-
-                elevation = std::copysign(
-                    std::pow(std::abs(elevation), 0.7f),
-                    elevation
-                );
-
-                const float height = std::clamp(
-                    config.baseHeight + elevation * heightRange * 0.5f,
-                    config.minHeight,
-                    config.maxHeight
-                );
-
-                points.push_back({ px, pz, height });
+        const auto AddWaterTriangle = [&](const Point& a, const Point& b, const Point& c) {
+            const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
+            for (const Point* p : { &a, &b, &c }) {
+                mesh.vertices.emplace_back(Vec4f{ p->x, waterY, p->z, 1.0f },
+                                           Vec2f{}, Vec3f{ 0.0f, 1.0f, 0.0f });
+                mesh.colors.push_back(Water);
             }
-        }
+            mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2 });
+        };
 
-        constexpr Color Water{ 35, 145, 220, 255 };
+        // Sutherland-Hodgman against the plane y = level, keeping the part below it.
+        const auto ClipTriangle = [&](const Point& a, const Point& b, const Point& c) {
+            const std::array<Point, 3> tri{ a, b, c };
+            std::array<Point, 4> poly;
+            int n = 0;
 
-        // Construit un triangle horizontal au niveau de l'eau.
-        const auto AddWaterTriangle = [&](const Point& a,
-            const Point& b,
-            const Point& c) {
-                const std::uint32_t base =
-                    static_cast<std::uint32_t>(mesh.vertices.size());
+            for (int i = 0; i < 3; ++i) {
+                const Point& cur = tri[i];
+                const Point& nxt = tri[(i + 1) % 3];
+                const bool curUnder = cur.height < level;
+                const bool nxtUnder = nxt.height < level;
 
-                constexpr float waterOffset = 0.001f;
-                const float waterY = config.waterLevel + waterOffset;
-
-                for (const Point* p : { &a, &b, &c }) {
-                    mesh.vertices.emplace_back(
-                        Vec4f{ p->x, waterY, p->z, 1.0f },
-                        Vec2f{},
-                        Vec3f{ 0.0f, 1.0f, 0.0f }
-                    );
-
-                    mesh.colors.push_back(Water);
+                if (curUnder) poly[n++] = cur;
+                if (curUnder != nxtUnder) {
+                    const float t = (level - cur.height) / (nxt.height - cur.height);
+                    poly[n++] = { cur.x + (nxt.x - cur.x) * t,
+                                  cur.z + (nxt.z - cur.z) * t, level };
                 }
+            }
 
-                mesh.indices.insert(
-                    mesh.indices.end(),
-                    { base, base + 1, base + 2 }
-                );
-            };
-
-        const auto ClipTriangle = [&](const Point& a,
-            const Point& b,
-            const Point& c) {
-                const std::array<Point, 3> triangle{ a, b, c };
-                std::vector<Point> polygon;
-                polygon.reserve(4);
-
-                for (int i = 0; i < 3; ++i) {
-                    const Point& current = triangle[i];
-                    const Point& next = triangle[(i + 1) % 3];
-
-                    const bool currentUnder =
-                        current.height < config.waterLevel;
-                    const bool nextUnder =
-                        next.height < config.waterLevel;
-
-                    if (currentUnder)
-                        polygon.push_back(current);
-
-                    if (currentUnder != nextUnder) {
-                        const float t =
-                            (config.waterLevel - current.height) /
-                            (next.height - current.height);
-
-                        polygon.push_back({
-                            current.x + (next.x - current.x) * t,
-                            current.z + (next.z - current.z) * t,
-                            config.waterLevel
-                            });
-                    }
-                }
-
-                if (polygon.size() < 3)
-                    return;
-
-                for (std::size_t i = 1; i + 1 < polygon.size(); ++i) {
-                    AddWaterTriangle(
-                        polygon[0],
-                        polygon[i],
-                        polygon[i + 1]
-                    );
-                }
-            };
+            for (int i = 1; i + 1 < n; ++i)
+                AddWaterTriangle(poly[0], poly[i], poly[i + 1]);
+        };
 
         for (int z = 0; z < config.cellsZ; ++z) {
-            for (int x = 0; x < config.cellsX; ++x) {
-                const auto a = static_cast<std::size_t>(
-                    z * verticesX + x
-                    );
-                const auto b = a + 1;
-                const auto c = a + verticesX;
-                const auto d = c + 1;
+            const float z0 = g.startZ + z * g.stepZ;
+            const float z1 = z0 + g.stepZ;
+            const float* r0 = &h[static_cast<std::size_t>(z) * g.vx];
+            const float* r1 = r0 + g.vx;
 
-                ClipTriangle(points[a], points[c], points[b]);
-                ClipTriangle(points[b], points[c], points[d]);
+            for (int x = 0; x < config.cellsX; ++x) {
+                const float ha = r0[x], hb = r0[x + 1];
+                const float hc = r1[x], hd = r1[x + 1];
+
+                // Whole cell above water: skip both triangles.
+                if (std::min(std::min(ha, hb), std::min(hc, hd)) >= level)
+                    continue;
+
+                const float x0 = g.startX + x * g.stepX;
+                const float x1 = x0 + g.stepX;
+
+                const Point a{ x0, z0, ha }, b{ x1, z0, hb };
+                const Point c{ x0, z1, hc }, d{ x1, z1, hd };
+
+                ClipTriangle(a, c, b);
+                ClipTriangle(b, c, d);
             }
         }
 
         return mesh;
     }
 
-    float GetTerrainLevel(
-        float baseHeight,
-        float minHeight,
-        float maxHeight,
-        float relativeLevel
-    ) {
+    float GetTerrainLevel(float baseHeight, float minHeight, float maxHeight, float relativeLevel) {
         const float range = maxHeight - minHeight;
-
-        const float normalizedBase =
-            (baseHeight - minHeight) / range;
-
-        return std::clamp(
-            baseHeight + (relativeLevel - 0.5f) * range,
-            minHeight,
-            maxHeight
-        );
+        return std::clamp(baseHeight + (relativeLevel - 0.5f) * range, minHeight, maxHeight);
     }
 }

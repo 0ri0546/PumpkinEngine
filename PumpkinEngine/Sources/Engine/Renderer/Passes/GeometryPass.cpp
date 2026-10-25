@@ -29,14 +29,16 @@ namespace Pumpkin {
     }
 
     // Pipeline: vertex shader -> clipping -> primitive assembly -> rasterizer -> fragment shader
-    void GeometryPass::DrawMesh(const DrawItem& item, const RenderContext& ctx) {
+    void GeometryPass::DrawMesh(const DrawItem& item, RenderContext& ctx) {
         // 1. Vertex shader
         ClipFlags flags;
+        ClipInfo info{};
         {
             Prof::Scope scope(Prof::Stage::Vertex);
             flags = VertexShader(
                 item.mesh->vertices,
                 m_clip,
+                info,
                 *item.model,
                 ctx.camera,
                 static_cast<float>(ctx.fb.width) / static_cast<float>(ctx.fb.height));
@@ -53,7 +55,7 @@ namespace Pumpkin {
 
             // 2. Clipping, only when something crosses the near plane
             if (flags.orCode & kNearBit) {
-                if (!ClipNearPlane(m_clip, item.mesh->indices, item.mesh->colors,
+                if (!ClipNearPlane(m_clip, item.mesh->indices, item.mesh->colors, info,
                                    m_clippedVertices, m_clippedIndices, m_clippedColors))
                     return;
 
@@ -97,46 +99,48 @@ namespace Pumpkin {
         // 5. Fragment shader
         {
             Prof::Scope scope(Prof::Stage::Fragment);
-            VertexColorShader vcs{};
-            LambertShader lambert{};
-            BlinnPhongShader blinnPhong{};
-            PBRShaderMaps pbrMaps{};
-            ToonShader toon{};
+            static VertexColorShader vcs{};
+            static LambertShader lambert{};
+            static BlinnPhongShader blinnPhong{};
+            static PBRShader pbr{};
+            static ToonShader toon{};
             switch (item.material->shader) {
             case ShaderId::VertexColor:
-                vcs.colors = colors;
-                FragmentShader(m_batch, ctx.fb, ctx.db, vcs, item);
+                vcs = VertexColorShader {
+                    .colors = colors
+                };
+                FragmentShader(m_batch, ctx, vcs, item);
                 break;
             case ShaderId::Lambert:
                 lambert = LambertShader{
                     .normals = m_clippedNormals,
                     .colors = colors
                 };
-                FragmentShader(m_batch, ctx.fb, ctx.db, lambert, item);
+                FragmentShader(m_batch, ctx, lambert, item);
                 break;
             case ShaderId::BlinnPhong:
                 blinnPhong = BlinnPhongShader{
                     .normals = m_clippedNormals,
                     .colors = colors
                 };
-                FragmentShader(m_batch, ctx.fb, ctx.db, blinnPhong, item);
+                FragmentShader(m_batch, ctx, blinnPhong, item);
                 break;
             case ShaderId::PBR:
-                pbrMaps = PBRShaderMaps{
+                pbr = PBRShader{
                     .normals = m_clippedNormals,
                     .colors = colors,
                     .ambient = item.material->ao,
                     .metallic = item.material->metallic,
                     .roughness = item.material->roughness
                 };
-                FragmentShader(m_batch, ctx.fb, ctx.db, pbrMaps, item);
+                FragmentShader(m_batch, ctx, pbr, item);
                 break;
             case ShaderId::Toon:
                 toon = ToonShader{
                     .normals = m_clippedNormals,
                     .colors = colors
                 };
-                FragmentShader(m_batch, ctx.fb, ctx.db, toon, item);
+                FragmentShader(m_batch, ctx, toon, item);
                 break;
             default:
                 break;

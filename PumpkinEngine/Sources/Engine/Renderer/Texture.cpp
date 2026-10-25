@@ -64,42 +64,27 @@ namespace Pumpkin {
         return true;
     }
 
-    Color SampleTexture(
-        const Texture& texture,
-        float u,
-        float v
-    ) {
-        if (texture.width <= 0 ||
-            texture.height <= 0 ||
-            texture.pixels.empty()) {
-            return Color{ 255, 255, 255, 255 };
-        }
-
-        // Repetition de la texture
+    // Nearest, raw packed pixel
+    static uint32_t SampleTexturePacked(const Texture& t, float u, float v) {
         u -= std::floor(u);
         v -= std::floor(v);
+        const int x = std::min(static_cast<int>(u * t.width), t.width - 1);
+        const int y = std::min(static_cast<int>((1.0f - v) * t.height), t.height - 1);
+        return t.pixels[static_cast<size_t>(y) * t.width + x];
+    }
 
-        // Conversion UV vers coordonnees pixel
-        const int x = std::clamp(
-            static_cast<int>(u * texture.width),
-            0,
-            texture.width - 1
-        );
+    static Color UnpackColor(uint32_t p) {
+        return Color{ .r = static_cast<uint8_t>(p >> 24),
+                      .g = static_cast<uint8_t>(p >> 16),
+                      .b = static_cast<uint8_t>(p >> 8),
+                      .a = static_cast<uint8_t>(p) };
+    }
 
-        const int y = std::clamp(
-            static_cast<int>((1.0f - v) * texture.height),
-            0,
-            texture.height - 1
-        );
-
-        const size_t index =
-            static_cast<size_t>(y) * texture.width + x;
-        const auto pixel = texture.pixels[index];
-        return Color{ 
-            .r = static_cast<uint8_t>((pixel >> 24) & 0xFF), 
-            .g = static_cast<uint8_t>((pixel >> 16) & 0xFF), 
-            .b = static_cast<uint8_t>((pixel >> 8) & 0xFF), 
-            .a = static_cast<uint8_t>(pixel & 0xFF) };
+    // Drop-in replacements: same signature and behaviour as before.
+    Color SampleTexture(const Texture& t, float u, float v) {
+        if (t.width <= 0 || t.height <= 0 || t.pixels.empty())
+            return Color{ 255, 255, 255, 255 };
+        return UnpackColor(SampleTexturePacked(t, u, v));
     }
 
 }

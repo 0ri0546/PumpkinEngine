@@ -22,9 +22,36 @@ namespace Pumpkin {
              | (p[2] < -w ? kNearBit : 0u);   // "needs near clip"
     }
 
+    // Scratch buffer that is never zero-filled on growth.
+    // Only for data that is always written before it is read.
+    template <class T>
+    class ScratchArray {
+    public:
+        void Reserve(std::size_t n) {
+            if (n <= capacity_) return;
+            data_ = std::make_unique_for_overwrite<T[]>(n);
+            capacity_ = n;
+        }
+        T& operator[](std::size_t i) { return data_[i]; }
+        const T& operator[](std::size_t i) const { return data_[i]; }
+        T* data() { return data_.get(); }
+        [[nodiscard]] const T* data() const { return data_.get(); }
+
+    private:
+        std::unique_ptr<T[]> data_;
+        std::size_t capacity_ = 0;
+    };
+
+    // Filled by the vertex shader, read by the clipper.
+    struct ClipInfo {
+        ScratchArray<std::uint8_t> codes; // frustum outcode per vertex
+        ScratchArray<float> dist;         // z + w, signed distance to the near plane
+    };
+
     ClipFlags VertexShader(
         std::span<const Vertex> vertices,
         std::vector<Vertex>& out,
+        ClipInfo& info,
         const Mat4f& model,
         const Camera& camera,
         float aspectRatio);
@@ -32,8 +59,7 @@ namespace Pumpkin {
     template <FragmentShader_T Shader>
     void FragmentShader(
         PrimitiveBatch& batch,
-        const FrameBuffer& fb,
-        DepthBuffer& db,
+        RenderContext& ctx,
         Shader& shader,
         const DrawItem& item
     ) {
@@ -41,6 +67,6 @@ namespace Pumpkin {
             .Projection = CameraType::Orthographic,
             .BilinearFiltering = true
         };
-        rasterizer.Rasterize(batch, fb, db, shader, item);
+        rasterizer.Rasterize(batch, ctx, shader, item);
     }
 }

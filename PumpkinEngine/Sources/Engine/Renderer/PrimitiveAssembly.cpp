@@ -40,11 +40,14 @@ namespace Pumpkin {
         if (desc.culling == CullMode::Front && area * kFrontFaceSign > 0.0f) return;
         const float invArea = 1.0f / area;
 
+        const float minX = std::min({ ax, bx, cx }), maxX = std::max({ ax, bx, cx });
+        const float minY = std::min({ ay, by, cy }), maxY = std::max({ ay, by, cy });
+
         // Bounding box, clamped to the screen (in float, before the int cast).
-        const float fx0 = std::max(0.0f, std::floor(std::min({ ax, bx, cx })));
-        const float fy0 = std::max(0.0f, std::floor(std::min({ ay, by, cy })));
-        const float fx1 = std::min(static_cast<float>(desc.width), std::ceil(std::max({ ax, bx, cx })) + 1.0f);
-        const float fy1 = std::min(static_cast<float>(desc.height), std::ceil(std::max({ ay, by, cy })) + 1.0f);
+        const float fx0 = std::max(0.0f, std::ceil(minX - 0.5f));
+        const float fy0 = std::max(0.0f, std::ceil(minY - 0.5f));
+        const float fx1 = std::min(static_cast<float>(desc.width),  std::floor(maxX - 0.5f) + 1.0f);
+        const float fy1 = std::min(static_cast<float>(desc.height), std::floor(maxY - 0.5f) + 1.0f);
         if (fx0 >= fx1 || fy0 >= fy1) return; // fully offscreen
 
         Primitive p{};

@@ -18,7 +18,7 @@ namespace Pumpkin
             (m_systems.emplace_back(std::move(systems)), ...);
         }
 
-        std::string_view Name() const override
+        [[nodiscard]] std::string_view Name() const override
         {
             return "Particles";
         }

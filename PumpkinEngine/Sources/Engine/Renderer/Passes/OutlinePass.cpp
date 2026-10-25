@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
-#include <vector>
 
 #include <Utils/ThreadPool.hpp>
 
@@ -28,74 +27,60 @@ namespace Pumpkin {
                 return;
         }
 
-        const float nearPlane = ctx.camera.nearFrame;
-        const float farPlane = ctx.camera.farFrame;
+        const float n = ctx.camera.nearFrame;
+        const float f = ctx.camera.farFrame;
 
-        if (nearPlane <= 0.0f || farPlane <= nearPlane)
+        if (n <= 0.0f || f <= n)
             return;
 
-        const auto& depth = ctx.db.pixels;
-
-        const std::size_t count =
-            static_cast<std::size_t>(width) * height;
-
-        if (depth.size() < count)
+        const std::size_t count = static_cast<std::size_t>(width) * height;
+        if (ctx.db.pixels.size() < count || ctx.toonMask.size() < count)
             return;
 
-        const std::vector<float> sourceDepth(depth.begin(), depth.begin() + count);
+        const float* depth = ctx.db.pixels.data();
+        const std::uint8_t* mask = ctx.toonMask.data();
+        std::uint32_t* out = ctx.fb.pixels;
 
-        const auto linearizeDepth = [nearPlane, farPlane](float d) {
-            const float zNdc = 2.0f * d - 1.0f;
+        // Constants
+        const float a = 2.0f * n * f;
+        const float b = f + n;
+        const float c = f - n;
+        const auto Linear = [=](float d) {
+            return a / (b - (2.0f * d - 1.0f) * c);
+        };
 
-            return (2.0f * nearPlane * farPlane) /
-                (farPlane + nearPlane -
-                    zNdc * (farPlane - nearPlane));
-            };
+        const float thr = threshold;
 
-        constexpr std::size_t chunkSize = 16384;
-        const std::size_t chunkCount =
-            (count + chunkSize - 1) / chunkSize;
+        // Parallel over rows
+        ParallelFor(GetPool(), static_cast<std::size_t>(height - 2),
+            [&](std::size_t r) {
+                const int y = static_cast<int>(r) + 1;
+                const std::size_t row = static_cast<std::size_t>(y) * width;
 
-        ParallelFor(GetPool(), chunkCount, [&](std::size_t chunk) {
-            const std::size_t begin = chunk * chunkSize;
-            const std::size_t end = std::min(count, begin + chunkSize);
+                for (int x = 1; x < width - 1; ++x) {
+                    const std::size_t i = row + x;
 
-            for (std::size_t i = begin; i < end; ++i) {
-                const int x = static_cast<int>(i % width);
-                const int y = static_cast<int>(i / width);
+                    if (!mask[i])            // not a toon pixel: nothing to do
+                        continue;
 
-                if (x == 0 || y == 0 ||
-                    x == width - 1 || y == height - 1)
-                    continue;
+                    const float d = depth[i];
+                    if (!(d < 1.0f))         // rejects invalid
+                        continue;
 
-                const float d = sourceDepth[i];
+                    const float l = depth[i - 1];
+                    const float rr = depth[i + 1];
+                    const float u = depth[i - width];
+                    const float dn = depth[i + width];
+                    if (l >= 1.0f || rr >= 1.0f || u >= 1.0f || dn >= 1.0f)
+                        continue;
 
-                if (!std::isfinite(d) || d >= 1.0f)
-                    continue;
+                    const float edge =
+                        std::abs(Linear(rr) - Linear(l)) +
+                        std::abs(Linear(dn) - Linear(u));
 
-                const float center = linearizeDepth(d);
-
-                const float leftDepth = sourceDepth[i - 1];
-                const float rightDepth = sourceDepth[i + 1];
-                const float upDepth = sourceDepth[i - width];
-                const float downDepth = sourceDepth[i + width];
-
-                if (leftDepth >= 1.0f || rightDepth >= 1.0f ||
-                    upDepth >= 1.0f || downDepth >= 1.0f)
-                    continue;
-
-                const float left = linearizeDepth(leftDepth);
-                const float right = linearizeDepth(rightDepth);
-                const float up = linearizeDepth(upDepth);
-                const float down = linearizeDepth(downDepth);
-
-                const float edge =
-                    std::abs(right - left) +
-                    std::abs(down - up);
-
-                if (edge > threshold * center)
-                    ctx.fb.pixels[i] = 0xFF000000;
-            }
+                    if (edge > thr * Linear(d))
+                        out[i] = 0xFF000000;
+                }
             });
     }
 }

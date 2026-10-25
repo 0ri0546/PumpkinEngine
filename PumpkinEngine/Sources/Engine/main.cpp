@@ -1,31 +1,32 @@
+#include <array>
 #include <chrono>
+#include <cmath>
 #include <cstddef>
 #include <cstdint>
-#include <filesystem>
 #include <format>
 #include <memory>
+#include <numbers>
 #include <print>
-#include <random>
 #include <thread>
-#include <unordered_map>
 #include <vector>
-#include <cstring>
 
 #include <Math/Mat.h>
 #include <SDL3/SDL.h>
 
 #include <Renderer/Camera.hpp>
 #include <Renderer/Fragment.hpp>
+#include <Renderer/MeshLoader.hpp>
 #include <Renderer/PrimitiveAssembly.hpp>
 #include <Renderer/Renderer.hpp>
-#include <Renderer/TerrainGenerator.hpp>
 #include <Renderer/Shaders.hpp>
+#include <Renderer/TerrainBatcher.hpp>
+#include <Renderer/TerrainGenerator.hpp>
 #include <Renderer/Texture.hpp>
 #include <Renderer/Transform.hpp>
 #include <Renderer/Types.hpp>
-#include <Utils/ObjParser.hpp>
 #include <Utils/RenderProfiler.hpp>
 #include <Utils/Utils.hpp>
+#include <Utils/Window.hpp>
 #include <Utils/Events/Events.hpp>
 
 #include <Renderer/Passes/ClearPass.hpp>
@@ -39,244 +40,72 @@
 
 using namespace Pumpkin;
 
-constexpr uint64_t kDefaultTargetFps = 120;
-constexpr uint64_t kUncappedFps      = 9'999'999;
-constexpr float    kDefaultVertexW   = 1.0f;
-constexpr uint32_t kInvalidIndex     = static_cast<uint32_t>(-1);
+namespace {
+    constexpr std::uint64_t kDefaultTargetFps = 120;
+    constexpr std::uint64_t kUncappedFps      = 9'999'999;
 
+    void LoadTextureOrWarn(Texture& texture, const char* path) {
+        if (!LoadTexture(texture, path)) {
+            std::println("Impossible to load texture: {}", path);
+        }
+    }
 
-static void GenerateNormals(Mesh& mesh)
-{
-    for (auto& vertex : mesh.vertices)
-        vertex.normal = Vec3f{};
-
-    for (size_t i = 0; i + 2 < mesh.indices.size(); i += 3)
-    {
-        const uint32_t i0 = mesh.indices[i];
-        const uint32_t i1 = mesh.indices[i + 1];
-        const uint32_t i2 = mesh.indices[i + 2];
-
-        const Vec3f p0{
-            mesh.vertices[i0].position[0],
-            mesh.vertices[i0].position[1],
-            mesh.vertices[i0].position[2]
+    TerrainConfig MakeTerrainConfig() {
+        return TerrainConfig{
+            .cellsX = 256,
+            .cellsZ = 256,
+            .sizeX = 50.0f,
+            .sizeZ = 50.0f,
+            .minHeight = -2.0f,
+            .maxHeight = 5.0f,
+            .baseHeight = 1.5f,
+            .noiseScale = 0.18f,
+            .noiseOctaves = 4,
+            .persistence = 0.5f,
+            .lacunarity = 2.0f,
+            .seed = 41,
+            .waterLevel = 0.20f,
+            .sandLevel = 0.35f,
+            .grassLevel = 0.35f,
+            .rockLevel = 0.45f,
+            .snowLevel = 0.72f
         };
-
-        const Vec3f p1{
-            mesh.vertices[i1].position[0],
-            mesh.vertices[i1].position[1],
-            mesh.vertices[i1].position[2]
-        };
-
-        const Vec3f p2{
-            mesh.vertices[i2].position[0],
-            mesh.vertices[i2].position[1],
-            mesh.vertices[i2].position[2]
-        };
-
-        const Vec3f normal = Cross(p1 - p0, p2 - p0);
-
-        mesh.vertices[i0].normal += normal;
-        mesh.vertices[i1].normal += normal;
-        mesh.vertices[i2].normal += normal;
     }
 
-    for (auto& vertex : mesh.vertices)
-        vertex.normal = vertex.normal.Normalized();
-}
-
-
-// ---------------------------------------------------------------------------
-// Mesh loading / drawing
-// ---------------------------------------------------------------------------
-
-static Mesh LoadMesh(
-    const std::filesystem::path& filepath,
-    Color col = Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
-    bool deduplicate = true) {
-    if (filepath.extension().string() != ".obj") return Mesh{};
-
-    // triangle test
-	static constexpr bool triangleTest = false;
-	if constexpr (triangleTest) {
-		Mesh mesh{};
-		mesh.vertices = {
-			{
-				{ 0.0f, 1.0f, 0.5f, 1.0f },
-				{},
-				{}
-			},
-			{
-				{ -1.0f, -1.0f, 0.5f, 1.0f },
-				{},
-				{}
-			},
-			{
-				{ 1.0f, -1.0f, 0.5f, 1.0f },
-				{},
-				{}
-			}
-		};
-		mesh.colors = { {255, 0, 0, 255}, {0, 255, 0, 255}, {0, 0, 255, 255} };
-		mesh.indices = { 0, 1, 2 };
-		return mesh;
-	}
-
-    const auto [attribs, objIndices] = LoadObj(filepath);
-
-    size_t validNormals = 0;
-
-    for (const auto& idx : objIndices)
-    {
-        if (idx.normal_index != kInvalidIndex)
-            ++validNormals;
+    Particles MakeSnowParticles() {
+        Particles particles{};
+        particles.
+            SetPosition(0.0f, 3.0f, 0.0f).
+            SetDirection(0.0f, -1.0f, 0.0f).
+            SetMaxParticles(2000).
+            SetMinDuration(0.5f).
+            SetMaxDuration(3.0f).
+            SetSpeedMin(0.1f).
+            SetSpeedMax(0.4f).
+            SetGravity(0.0f, -0.62f, 0.0f).
+            SetInitialVelocity(0.0f, 0.0f, 0.0f).
+            SetColorMin({ 255, 210, 210, 255 }).
+            SetColorMax({ 255, 255, 255, 255 }).
+            SetSpawnRadius(20);
+        return particles;
     }
 
-    std::cout << "OBJ normals: " << attribs.normals.size() / 3
-        << " | Face references with normals: " << validNormals
-        << " / " << objIndices.size() << '\n';
-
-    Mesh mesh;
-    mesh.vertices.reserve(objIndices.size());
-    mesh.indices.reserve(objIndices.size());
-
-    std::unordered_map<IndexKey, uint32_t> seen;
-    if (deduplicate) seen.reserve(objIndices.size());
-
-    for (const auto& idx : objIndices) {
-        const size_t pos = static_cast<size_t>(idx.vertex_index) * 3;
-        if (pos + 2 >= attribs.vertices.size()) {
-            continue;
-        }
-
-        const auto vertexIndex = static_cast<uint32_t>(mesh.vertices.size());
-
-        if (deduplicate) {
-            const IndexKey key{
-                idx.vertex_index,
-                idx.texcoord_index,
-                idx.normal_index
-            };
-
-            // Duplicate: reuse the old vertex, add no new one
-            if (const auto it = seen.find(key); it != seen.end()) {
-                mesh.indices.push_back(it->second);
-                continue;
-            }
-            seen.emplace(key, vertexIndex);
-        }
-
-        Vec2f uv{};
-        if (idx.texcoord_index != kInvalidIndex) {
-            const size_t i = static_cast<size_t>(idx.texcoord_index) * 2;
-            if (i + 1 < attribs.texcoords.size()) {
-                uv = { attribs.texcoords[i], attribs.texcoords[i + 1] };
-            }
-        }
-
-        Vec3f normal{};
-        if (idx.normal_index != kInvalidIndex) {
-            const size_t i = static_cast<size_t>(idx.normal_index) * 3;
-            if (i + 2 < attribs.normals.size()) {
-                normal = { attribs.normals[i], attribs.normals[i + 1], attribs.normals[i + 2] };
-            }
-        }
-
-        // New vertex: its index is its position in mesh.vertices
-        mesh.indices.push_back(vertexIndex);
-        mesh.vertices.emplace_back(
-            Vec4f{
-                attribs.vertices[pos],
-                attribs.vertices[pos + 1],
-                attribs.vertices[pos + 2],
-                kDefaultVertexW
-            },
-            uv,
-            normal
-        );
+    Particles MakeFountainParticles() {
+        Particles particles{};
+        particles.
+            SetPosition(3.0f, 7.0f, 0.0f).
+            SetDirection(-1.0f, 1.0f, 0.3f).
+            SetMaxParticles(500).
+            SetMinDuration(0.5f).
+            SetMaxDuration(3.0f).
+            SetSpeedMin(0.7f).
+            SetSpeedMax(1.3f).
+            SetGravity(0.0f, -9.81f, 0.0f).
+            SetInitialVelocity(0.0f, 2.0f, 0.0f).
+            SetColorMin({ 255, 0, 255, 255 }).
+            SetColorMax({ 255, 255, 255, 255 });
+        return particles;
     }
-
-    if (!mesh.vertices.empty()) {
-        Vec3f minBounds{
-            mesh.vertices[0].position[0],
-            mesh.vertices[0].position[1],
-            mesh.vertices[0].position[2]
-        };
-
-        Vec3f maxBounds = minBounds;
-
-        for (const auto& vertex : mesh.vertices) {
-            for (int axis = 0; axis < 3; ++axis) {
-                minBounds[axis] = std::min(minBounds[axis], vertex.position[axis]);
-                maxBounds[axis] = std::max(maxBounds[axis], vertex.position[axis]);
-            }
-        }
-
-        Vec3f center = (minBounds + maxBounds) * 0.5f;
-        Vec3f size = maxBounds - minBounds;
-
-        float maxSize = std::max({ size[0], size[1], size[2] });
-
-        if (maxSize > 0.0f) {
-            float scale = 2.0f / maxSize;
-
-            for (auto& vertex : mesh.vertices) {
-                for (int axis = 0; axis < 3; ++axis) {
-                    vertex.position[axis] =
-                        (vertex.position[axis] - center[axis]) * scale;
-                }
-            }
-        }
-    }
-
-    mesh.colors = GenerateRGBA(mesh.vertices.size(), col.r, col.g, col.b, col.a);
-    GenerateNormals(mesh);
-    return mesh;
-}
-
-// ---------------------------------------------------------------------------
-// Window / buffers
-// ---------------------------------------------------------------------------
-
-static void SetMultiResWindowIcon(SDL_Window* window) {
-    SDL_Surface* baseIcon = SDL_LoadPNG("Assets/Icons/Pumpkin@32.png");
-    SDL_Surface* icon16   = SDL_LoadPNG("Assets/Icons/Pumpkin@16.png");
-    SDL_Surface* icon64   = SDL_LoadPNG("Assets/Icons/Pumpkin@64.png");
-
-    if (!baseIcon || !icon16 || !icon64) {
-        SDL_Log("Couldn't load icons : %s", SDL_GetError());
-        // SDL_DestroySurface(nullptr) is a safe no-op; release whatever did load.
-        SDL_DestroySurface(baseIcon);
-        SDL_DestroySurface(icon16);
-        SDL_DestroySurface(icon64);
-        return;
-    }
-
-    // The alternate images are ref-counted by SDL, so our handles can go right away.
-    SDL_AddSurfaceAlternateImage(baseIcon, icon16);
-    SDL_DestroySurface(icon16);
-    SDL_AddSurfaceAlternateImage(baseIcon, icon64);
-    SDL_DestroySurface(icon64);
-
-    if (!SDL_SetWindowIcon(window, baseIcon)) {
-        SDL_Log("Error while setting the window icon : %s", SDL_GetError());
-    }
-
-    SDL_DestroySurface(baseIcon);
-}
-
-static void ResizeBuffers(Renderer& renderer, FrameBuffer& fb, DepthBuffer& db, int width, int height) {
-    renderer.Resize(width, height);
-    fb.width  = width;
-    fb.height = height;
-    db.width  = width;
-    db.height = height;
-    db.pixels.resize(static_cast<size_t>(width) * static_cast<size_t>(height), 1.0f);
-}
-
-static bool WindowNotFocused(SDL_Window* window) {
-    const SDL_WindowFlags flags = SDL_GetWindowFlags(window);
-    return !(flags & SDL_WINDOW_INPUT_FOCUS) || (flags & SDL_WINDOW_MINIMIZED);
 }
 
 // ---------------------------------------------------------------------------
@@ -285,19 +114,22 @@ int main() {
     const auto fb = std::make_unique<FrameBuffer>();
     const auto db = std::make_unique<DepthBuffer>();
 
-    uint64_t targetFps = kDefaultTargetFps;
+    std::uint64_t targetFps = kDefaultTargetFps;
 
     Camera camera;
 
     auto previousTime = std::chrono::steady_clock::now();
 
+    // SDL, renderer and window
+
     if (!SDL_Init(SDL_INIT_VIDEO)) {
-        std::println("SDL could not initialize! SDL Error: {}", SDL_GetError());
+        std::println(stderr, "SDL could not initialize! SDL Error: {}", SDL_GetError());
         return 1;
     }
 
     if (!TTF_Init()) {
         std::println(stderr, "SDL_ttf couldn't initialize! SDL Error: {}", SDL_GetError());
+        SDL_Quit();
         return 1;
     }
 
@@ -306,14 +138,15 @@ int main() {
         SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
         const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
         ResizeBuffers(renderer, *fb, *db, mode->w / 2, mode->h / 2);
+        camera.aspectRatio = static_cast<float>(fb->width) / static_cast<float>(fb->height);
         if (mode->refresh_rate != 0.0f) {
-            targetFps = kUncappedFps;//static_cast<std::int32_t>(mode->refresh_rate);
+            targetFps = kUncappedFps;//static_cast<std::uint64_t>(mode->refresh_rate);
         }
         SDL_free(ids);
     }
 
-    constexpr SDL_WindowFlags flags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
-    SDL_Window* window = SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, flags);
+    constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
+    SDL_Window* window = SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, windowFlags);
     if (!window) {
         std::println("Could not create window! SDL Error: {}", SDL_GetError());
         SDL_Quit();
@@ -324,93 +157,63 @@ int main() {
     SDL_Surface* surface = SDL_GetWindowSurface(window);
     surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    // Objects creation
-    const Color cowColor{ 255, 255, 255, 255 };
-    const Color vkRoomColor{ 255, 255, 255, 255 };
+    // Meshes, textures and materials
 
-    Mesh cowObj = LoadMesh("Assets/Models/Spot.obj", cowColor);
-    Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", vkRoomColor);
+    constexpr Color white{ .r = 255, .g = 255, .b = 255, .a = 255 };
 
-    Mat4f cowModel = Mat4f::Translate({ 0.0f, 7.0f, 0.0f });
+    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj", white);
+    Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", white);
+
+    Mat4f cowModel    = Mat4f::Translate({ 0.0f, 7.0f, 0.0f });
     Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 7.0f, -3.0f });
-    vkRoomModel.SetRotation(Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
+    vkRoomModel.SetRotation(
+        Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
 
-    Texture cowAlbedo;
-    if (!LoadTexture(cowAlbedo, "Assets/Textures/SpotTexture.png")) {
-        std::println("Impossible to load texture.");
-    }
-    Texture vkRoomAlbedo;
-    if (!LoadTexture(vkRoomAlbedo, "Assets/Textures/VikingRoom/Albedo.png")) {
-        std::println("Impossible to load texture.");
-    }
-    Texture vkRoomORM;
-    if (!LoadTexture(vkRoomORM, "Assets/Textures/VikingRoom/ORM.png")) {
-        std::println("Impossible to load texture.");
-    }
-    Texture skyboxTexture;
-    if (!LoadTexture(
-        skyboxTexture,
-        "Assets/Textures/Skybox.png"
-    )) {
-        std::println("Impossible to load texture.");
-    }
+    Texture cowAlbedo, vkRoomAlbedo, vkRoomNormal, vkRoomORM, skyboxTexture;
+    LoadTextureOrWarn(cowAlbedo,     "Assets/Textures/SpotTexture.png");
+    LoadTextureOrWarn(vkRoomAlbedo,  "Assets/Textures/VikingRoom/Albedo.png");
+    LoadTextureOrWarn(vkRoomNormal,  "Assets/Textures/VikingRoom/Normal.png");
+    LoadTextureOrWarn(vkRoomORM,     "Assets/Textures/VikingRoom/ORM.png");
+    LoadTextureOrWarn(skyboxTexture, "Assets/Textures/Skybox.png");
 
-	Material cowMaterial{
-		.baseColor = cowColor,
-		.metallic = 0.7f,
-		.roughness = 0.3f,
-		.ao = 0.5f,
-		.albedo = &cowAlbedo,
-		.shader = ShaderId::BlinnPhong //test avc cartoon shader, tu peux retirer si tu veux
-	};
-	Material vkRoomMaterial{
-		.baseColor = vkRoomColor,
-		.albedo = &vkRoomAlbedo,
-		.orm = &vkRoomORM
-	};
-
-    TerrainConfig terrainConfig{
-    .cellsX = 256,
-    .cellsZ = 256,
-    .sizeX = 50.0f,
-    .sizeZ = 50.0f,
-    .minHeight = -2.0f,
-    .maxHeight = 5.0f,
-    .baseHeight = 1.5f,
-    .noiseScale = 0.18f,
-    .noiseOctaves = 4,
-    .persistence = 0.5f,
-    .lacunarity = 2.0f,
-    .seed = 41,
-    .waterLevel = 0.20f,
-    .sandLevel = 0.35f,
-    .grassLevel = 0.35f,
-    .rockLevel = 0.45f,
-    .snowLevel = 0.72f
+    Material cowMaterial{
+        .baseColor = white,
+        .metallic = 0.7f,
+        .roughness = 0.3f,
+        .ao = 0.5f,
+        .albedo = &cowAlbedo,
+        .shader = ShaderId::Toon
+    };
+    Material vkRoomMaterial{
+        .baseColor = white,
+        .albedo = &vkRoomAlbedo,
+        .normal = &vkRoomNormal,
+        .orm = &vkRoomORM,
+        .shader = ShaderId::PBR
     };
 
-    Mesh terrainMesh = GenerateTerrain(terrainConfig);
+    // Terrain and water
+
+    const TerrainConfig terrainConfig = MakeTerrainConfig();
+    TerrainBatcher terrain{ GenerateTerrainChunks(terrainConfig, 16) };
     Mesh waterMesh = GenerateWater(terrainConfig);
 
     Mat4f terrainModel = Mat4f::Identity();
-    Mat4f waterModel = Mat4f::Identity();
+    Mat4f waterModel   = Mat4f::Identity();
 
     Material terrainMaterial{
         .baseColor = { 255, 255, 255, 255 },
         .shader = ShaderId::PBR
     };
-
     Material waterMaterial{
-    .baseColor = { 255, 255, 255, 255 },
-    .shader = ShaderId::VertexColor
+        .baseColor = { 255, 255, 255, 255 },
+        .shader = ShaderId::VertexColor
     };
-    std::cout << "vertices terrain : " << terrainMesh.vertices.size() << ", indices : " << terrainMesh.indices.size() << '\n';
 
-    // Font loading / text creation
-    TTF_Font* font = nullptr;
+    // Text and particles
+
     constexpr float fontSize = 14.0f;
-
-    font = TTF_OpenFont("Assets/Fonts/Arial.ttf", fontSize);
+    TTF_Font* font = TTF_OpenFont("Assets/Fonts/Arial.ttf", fontSize);
     if (font == nullptr) {
         SDL_Log("Couldn't load %g pt font from %s: %s",
             fontSize, "Assets/Fonts/Arial.ttf", SDL_GetError());
@@ -420,79 +223,36 @@ int main() {
 
     Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
 
-    Particles particleSettings{};
-    particleSettings.
-        SetPosition(0.0f, 3.0f, 0.0f).
-        SetDirection(0.0f, -1.0f, 0.0f).
-        SetMaxParticles(2000).
-        SetMinDuration(0.5f).
-        SetMaxDuration(3.0f).
-        SetSpeedMin(0.1f).
-        SetSpeedMax(0.4f).
-        SetGravity(0.0f, -0.62f, 0.0f).
-        SetInitialVelocity(0.0f, 0.0f, 0.0f).
-        SetColorMin({ 255, 210, 210, 255 }).
-        SetColorMax({ 255, 255, 255, 255 }).
-        SetSpawnRadius(20);
+    auto particleSystem  = std::make_shared<ParticleSystem>(MakeSnowParticles());
+    auto particleSystem2 = std::make_shared<ParticleSystem>(MakeFountainParticles());
 
+    // Render passes and scene
 
-    Particles particleSettings2{};
-    particleSettings2.
-        SetPosition(3.0f, 0.0f, 0.0f).
-        SetDirection(-1.0f, 1.0f, 0.3f).
-        SetMaxParticles(500).
-        SetMinDuration(0.5f).
-        SetMaxDuration(3.0f).
-        SetSpeedMin(0.7f).
-        SetSpeedMax(1.3f).
-        SetGravity(0.0f, -9.81f, 0.0f).
-        SetInitialVelocity(0.0f, 2.0f, 0.0f).
-        SetColorMin({ 255, 0, 255, 255 }).
-        SetColorMax({ 255, 255, 255, 255 });
-
-    auto particleSystem = std::make_shared<ParticleSystem>(particleSettings);
-    auto particleSystem2 = std::make_shared<ParticleSystem>(particleSettings2);
-
-    renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
-
-    // Creating render passes and scene
     renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
     renderer.AddPass<SkyboxPass>(skyboxTexture);
     renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
     renderer.AddPass<GeometryPass>();
-    auto& outline = renderer.AddPass<OutlinePass>();
-	outline.threshold = 0.01f; //tolerence : plus bas = plus de contours / plus haut = moins de contours
+    renderer.AddPass<OutlinePass>(0.03f);
     renderer.AddPass<TextPass>(text);
-    
+
     std::array scene{
-        DrawItem{
-            .mesh = &waterMesh,
-            .model = &waterModel,
-            .material = &waterMaterial
-        },
-        DrawItem{
-            .mesh = &terrainMesh,
-            .model = &terrainModel,
-            .material = &terrainMaterial
-        },
-        DrawItem{
-            .mesh = &cowObj,
-            .model = &cowModel,
-            .material = &cowMaterial
-        },
-        DrawItem{
-            .mesh = &vkRoomObj,
-            .model = &vkRoomModel,
-            .material = &vkRoomMaterial
-        }
+        DrawItem{ .mesh = &waterMesh,          .model = &waterModel,   .material = &waterMaterial },
+        DrawItem{ .mesh = &terrain.Inside(),   .model = &terrainModel, .material = &terrainMaterial },
+        DrawItem{ .mesh = &terrain.Crossing(), .model = &terrainModel, .material = &terrainMaterial },
+        DrawItem{ .mesh = &cowObj,             .model = &cowModel,     .material = &cowMaterial },
+        DrawItem{ .mesh = &vkRoomObj,          .model = &vkRoomModel,  .material = &vkRoomMaterial },
     };
+
+    // Main loop
 
     const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
     auto nextFrame = std::chrono::steady_clock::now();
 
-    uint64_t lastFpsUpdate = SDL_GetTicks();
-    uint32_t frames = 0;
+    std::uint64_t lastFpsUpdate = SDL_GetTicks();
+    std::uint32_t frames = 0;
     bool isRunning = true;
+
+    std::vector<std::uint8_t> toon(static_cast<std::size_t>(fb->width) * fb->height);
 
     while (isRunning) {
         nextFrame += frameTime;
@@ -509,13 +269,15 @@ int main() {
                 surface = SDL_GetWindowSurface(window);
                 surface->format = SDL_PIXELFORMAT_RGBA32;
                 ResizeBuffers(renderer, *fb, *db, event.window.data1, event.window.data2);
+                camera.aspectRatio = static_cast<float>(fb->width) / static_cast<float>(fb->height);
+                toon.resize(static_cast<std::size_t>(fb->width) * fb->height);
                 break;
 
             default:
                 break;
             }
 
-            Pumpkin::handleCameraEvent(camera, event);
+            HandleCameraEvent(camera, event);
         }
 
         if (WindowNotFocused(window)) {
@@ -523,22 +285,30 @@ int main() {
             continue;
         }
 
-        auto currentTime = std::chrono::steady_clock::now();
-        std::chrono::duration<float> elapsedTime = currentTime - previousTime;
-        float deltaTime = elapsedTime.count();
+        const auto currentTime = std::chrono::steady_clock::now();
+        const std::chrono::duration<float> elapsedTime = currentTime - previousTime;
+        const float deltaTime = elapsedTime.count();
         previousTime = currentTime;
 
-        Pumpkin::updateCameraMovement(camera, deltaTime);
+        UpdateCameraMovement(camera, deltaTime);
 
-        fb->pixels = static_cast<uint32_t*>(surface->pixels);
-        RenderContext ctx{ *fb, *db, camera, deltaTime, scene };
+        fb->pixels = static_cast<std::uint32_t*>(surface->pixels);
+
+        // Same matrices as VertexShader, so the chunk culling matches what is drawn.
+        const float fovRadians = camera.FOVY * (std::numbers::pi_v<float> / 180.0f);
+        const Mat4f view       = camera.getViewMatrix();
+        const Mat4f projection = Mat4f::Perspective(fovRadians, camera.aspectRatio, camera.nearFrame, camera.farFrame);
+        const Mat4f viewModel  = view * terrainModel;
+        terrain.Update(projection * viewModel);
+
+        RenderContext ctx{ .fb = *fb, .db = *db, .camera = camera, .deltaTime = deltaTime, .scene = scene, .toonMask = toon };
         renderer.Render(ctx);
 
         SDL_UpdateWindowSurface(window);
 
         // FPS counter in the window title, refreshed once per second.
         ++frames;
-        const uint64_t now = SDL_GetTicks();
+        const std::uint64_t now = SDL_GetTicks();
         if (now - lastFpsUpdate >= 1000) {
             SDL_SetWindowTitle(window, std::format("Pumpkin Engine | FPS: {}", frames).c_str());
             frames = 0;
@@ -548,6 +318,8 @@ int main() {
         Prof::EndFrame();
         std::this_thread::sleep_until(nextFrame);
     }
+
+    // Shutdown
 
     TTF_CloseFont(font);
     TTF_Quit();

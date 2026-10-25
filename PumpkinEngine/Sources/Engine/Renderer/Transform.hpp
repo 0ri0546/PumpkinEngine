@@ -1,5 +1,6 @@
 #pragma once
 
+#include <Renderer/Shaders.hpp>
 #include <Renderer/Types.hpp>
 
 #include <span>
@@ -14,6 +15,7 @@ namespace Pumpkin {
         std::span<const Vertex> inputVertices,
         std::span<const uint32_t> inputIndices,
         std::span<const Color> inputColors,
+        ClipInfo& clip,
         std::vector<Vertex>& outputVertices,
         std::vector<uint32_t>& outputIndices,
         std::vector<Color>& outputColors

@@ -10,7 +10,7 @@ namespace Pumpkin {
         void Execute(RenderContext& ctx) override;
 
     private:
-        void DrawMesh(const DrawItem&, const RenderContext&);
+        void DrawMesh(const DrawItem&, RenderContext&);
 
         std::vector<Vertex>   m_clip, m_clippedVertices, m_screen;
         std::vector<uint32_t> m_clippedIndices;

@@ -170,12 +170,12 @@ namespace Pumpkin {
     }
 
     template <FragmentShader_T S>
-    void Rasterizer::Rasterize(const PrimitiveBatch& batch, const FrameBuffer& fb, DepthBuffer& db,
+    void Rasterizer::Rasterize(const PrimitiveBatch& batch, RenderContext& ctx,
         const S& shader, const DrawItem& item) const {
-        if (fb.width == 0 || fb.height == 0) return;
+        if (ctx.fb.width == 0 || ctx.fb.height == 0) return;
 
-        const int w = fb.width;
-        const int h = fb.height;
+        const int w = ctx.fb.width;
+        const int h = ctx.fb.height;
         const int tilesX = (w + kTileSize - 1) / kTileSize;
         const int tilesY = (h + kTileSize - 1) / kTileSize;
         const auto tileCount = static_cast<std::uint32_t>(tilesX * tilesY);
@@ -185,7 +185,6 @@ namespace Pumpkin {
 
         // Each thread grabs the next free tile until none are left.
         std::atomic<std::uint32_t> nextTile{ 0 };
-        float* depth = db.pixels.data();
 
         const std::function<void()> worker = [&] {
             thread_local std::vector<SortItem> scratch;
@@ -207,8 +206,8 @@ namespace Pumpkin {
 
                 for (const SortItem* it = begin; it != end; ++it) {
                     const Primitive& p = batch[it->index];
-                    if (p.transparent) DrawInTile<true>(p, it->index, tile, depth, fb.pixels, fb.width, shader, item);
-                    else               DrawInTile<false>(p, it->index, tile, depth, fb.pixels, fb.width, shader, item);
+                    if (p.transparent) DrawInTile<true>(p, it->index, tile, ctx, shader, item);
+                    else               DrawInTile<false>(p, it->index, tile, ctx, shader, item);
                 }
             }
         };
@@ -218,11 +217,17 @@ namespace Pumpkin {
 
     template <bool Transparent, FragmentShader_T S>
     void Rasterizer::DrawInTile(const Primitive& t, std::uint32_t primitiveId, const Tile& tile,
-        float* depth, std::uint32_t* pixels, std::uint32_t width, const S& shader, const DrawItem& item) const {
+        RenderContext& ctx, const S& shader, const DrawItem& item) const {
         using namespace Detail;
 
-        constexpr float nearPlane = 0.01f;
-        constexpr float farPlane = 100.0f;
+        const float nearPlane = ctx.camera.nearFrame;
+        const float farPlane = ctx.camera.farFrame;
+
+        const auto width = ctx.fb.width;
+        float* depth = ctx.db.pixels.data();
+        uint32_t* pixels = ctx.fb.pixels;
+
+        const std::uint8_t isToon = (item.material && item.material->shader == ShaderId::Toon) ? 1 : 0;
 
         const int xa = std::max(t.x0, tile.x0), xb = std::min(t.x1, tile.x1);
         const int ya = std::max(t.y0, tile.y0), yb = std::min(t.y1, tile.y1);
@@ -311,7 +316,7 @@ namespace Pumpkin {
                         const V::type tu = V::mul(vu, inv), tv = V::mul(vv, inv);
                         const V::type two = V::set1(2.0f), one1 = V::set1(1.0f);
 
-                        auto chan = [&]<int S>(const TexelSIMD & t) { return V::mul(Channel<S>(t), inv255); };
+                        auto chan = [&]<int C>(const TexelSIMD & t) { return V::mul(Channel<C>(t), inv255); };
 
                         // One channel (ORM : Occlusion Roughness Metallic) of a map, 0..1 range.
                         const auto sampleR = [&](const Texture& tex) {
@@ -381,6 +386,8 @@ namespace Pumpkin {
                         // The shader is scalar: call it for the lanes that passed.
                         for (int lane = 0; lane < kLanes; ++lane) {
                             if (!(bits & (1 << lane))) continue;
+                            ctx.toonMask[y * width + x + lane] = isToon;
+
                             frag.x = x + lane;
                             frag.depth = zs[lane];
                             frag.b0 = b0[lane]; frag.b1 = b1[lane]; frag.b2 = b2[lane];
@@ -514,6 +521,7 @@ namespace Pumpkin {
                         frag.metallic = sampleB(*item.material->orm);
                     }
 
+                    ctx.toonMask[y * width + x] = isToon;
                     const PixelOutput c = shader(frag);
                     const float sr = c.r, sg = c.g, sb = c.b, sa = c.a;
 

@@ -22,6 +22,7 @@ namespace Pumpkin {
         const Camera& camera;
         float         deltaTime{};
         std::span<DrawItem> scene;
+        std::vector<std::uint8_t>& toonMask; // for tooning, only saves tooned materials data
     };
 
     class RenderPass {

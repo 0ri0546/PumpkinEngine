@@ -1,20 +1,24 @@
 #pragma once
 
+#include <vector>
+
+#include <Math/Mat.h>
 #include <Renderer/Types.hpp>
 
 namespace Pumpkin {
     struct TerrainConfig {
+        // Grid resolution (in cells) and world-space size.
         int cellsX = 64;
         int cellsZ = 64;
-
         float sizeX = 20.0f;
         float sizeZ = 20.0f;
 
+        // Height range and vertical offset of the noise.
         float minHeight = -2.0f;
         float maxHeight = 5.0f;
-
         float baseHeight = -1.5f;
 
+        // Fractal noise.
         float noiseScale = 0.12f;
         int noiseOctaves = 4;
         float persistence = 0.5f;
@@ -30,12 +34,30 @@ namespace Pumpkin {
         float waterColorLevel = 0.05f;
     };
 
-    [[nodiscard]] Mesh GenerateTerrain(
-        const TerrainConfig& config = {}
+    // Axis-aligned bounding box.
+    struct AABB {
+        Vec3f min, max;
+    };
+
+    // A patch of the terrain with its own mesh and local-space bounds.
+    struct TerrainChunk {
+        Mesh mesh;
+        AABB bounds;
+    };
+
+    // The whole terrain as a single mesh.
+    [[nodiscard]] Mesh GenerateTerrain(const TerrainConfig& config = {});
+
+    // The same terrain split into chunkCells x chunkCells patches
+    [[nodiscard]] std::vector<TerrainChunk> GenerateTerrainChunks(
+        const TerrainConfig& config,
+        int chunkCells = 16
     );
 
+    // Flat water surface, only emitted where the terrain is below config.waterLevel.
     [[nodiscard]] Mesh GenerateWater(const TerrainConfig& config);
 
+    // Converts a level relative to [minHeight, maxHeight] into an absolute height.
     [[nodiscard]] float GetTerrainLevel(
         float baseHeight,
         float minHeight,

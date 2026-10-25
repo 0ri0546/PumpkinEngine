@@ -1,7 +1,6 @@
 #include "ParticlePass.hpp"
 
 #include <algorithm>
-#include <cmath>
 #include <numbers>
 
 namespace Pumpkin {

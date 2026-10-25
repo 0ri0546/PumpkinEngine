@@ -3,7 +3,7 @@
 
 namespace Pumpkin {
 
-    bool mouseClick(void* p, SDL_Event* event, Camera* camera) {
+    bool MouseClick(void* p, SDL_Event* event, Camera* camera) {
         if (event->type == SDL_EVENT_MOUSE_BUTTON_DOWN) {
             if (event->button.button == SDL_BUTTON_LEFT)
                 std::println("mouse left");
@@ -22,7 +22,7 @@ namespace Pumpkin {
     }
 
 
-    void updateCameraMovement(Camera& camera, float deltaTime) {
+    void UpdateCameraMovement(Camera& camera, float deltaTime) {
         const bool* state = SDL_GetKeyboardState(nullptr);
 
         float forward = 0.0f;
@@ -36,7 +36,7 @@ namespace Pumpkin {
         camera.move(forward, right, deltaTime);
     }
 
-    void handleCameraEvent(Camera& camera, const SDL_Event& event) {
+    void HandleCameraEvent(Camera& camera, const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_MOTION &&
             (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) {
             camera.rotate(

@@ -99,11 +99,11 @@ namespace Pumpkin {
         std::span<const Vertex> inputVertices,
         std::span<const uint32_t> inputIndices,
         std::span<const Color> inputColors,
+        ClipInfo& info,
         std::vector<Vertex>& outputVertices,
         std::vector<uint32_t>& outputIndices,
         std::vector<Color>& outputColors)
     {
-        // TODO: could make it vary depending on the mesh size
         constexpr size_t kTriChunk = 4096;
 
         const size_t n = std::min(inputVertices.size(), inputColors.size());
@@ -116,19 +116,20 @@ namespace Pumpkin {
         }
 
         // Scratch reused between calls
-        static std::vector<float> dist;
-        static std::vector<uint8_t> used;           // 1 = vertex survives clipping
-        static std::vector<uint32_t> remap;         // input vertex -> output vertex
-        static std::vector<uint8_t> cls;            // per triangle: which vertices are outside (bit mask), 7 = dropped
+        static ScratchArray<std::uint8_t> used;   // 1 = vertex survives clipping
+        static ScratchArray<std::uint32_t> remap; // input vertex -> output vertex
+        static ScratchArray<std::uint8_t> cls;    // per triangle outside mask, 7 = dropped
         static std::vector<uint32_t> usedCount, cutCount, indexCount; // per chunk
+
+        const float* dist = info.dist.data();           // the rest of the function keeps using dist[...]
+        const std::uint8_t* codes = info.codes.data();
 
         const size_t vertexChunks = (n + kVertexChunk - 1) / kVertexChunk;
         const size_t triChunks = (triCount + kTriChunk - 1) / kTriChunk;
 
-        dist.resize(n);
-        used.resize(n);
-        remap.resize(n);
-        cls.resize(triCount);
+        used.Reserve(n);
+        remap.Reserve(n);
+        cls.Reserve(triCount);
         usedCount.resize(vertexChunks);
         cutCount.resize(triChunks);
         indexCount.resize(triChunks);
@@ -141,15 +142,7 @@ namespace Pumpkin {
             Pumpkin::ParallelFor(GetPool(), chunks, fn);
         };
 
-        // Signed distance to the near plane for every vertex.
-        forEachChunk(vertexChunks, [&](size_t chunk) {
-            const size_t begin = chunk * kVertexChunk;
-            const size_t end = std::min(n, begin + kVertexChunk);
-            for (size_t i = begin; i < end; ++i) {
-                dist[i] = inputVertices[i].position[2] + inputVertices[i].position[3];
-                used[i] = 0;
-            }
-        });
+        std::memset(used.data(), 0, n);
 
         // Output sizes for each triangle class (index = bit mask of outside vertices)
         // 0: visible, 1/2/4: one outside (quad = 2 triangles), 3/5/6: two outside, 7: behind
@@ -174,6 +167,7 @@ namespace Pumpkin {
             for (size_t t = begin; t < end; ++t, idx += 3) {
                 const uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
                 if (v0 >= n || v1 >= n || v2 >= n) { cls[t] = 7; continue; }
+                if (codes[v0] & codes[v1] & codes[v2]) { cls[t] = 7; continue; }
 
                 const unsigned outside =
                     (dist[v0] < 0.0f ? 1u : 0u) |

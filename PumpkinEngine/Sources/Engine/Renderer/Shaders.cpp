@@ -5,14 +5,12 @@
 #include <Renderer/Rasterizer.hpp>
 
 namespace Pumpkin {
-    ClipFlags VertexShader(
-        std::span<const Vertex> vertices,
-        std::vector<Vertex>& out,
-        const Mat4f& model,
-        const Camera& camera,
-        float aspectRatio)
+    ClipFlags VertexShader(std::span<const Vertex> vertices, std::vector<Vertex>& out,
+                       ClipInfo& info, const Mat4f& model, const Camera& camera, float aspectRatio)
     {
         out.resize(vertices.size());
+        info.codes.Reserve(vertices.size());
+        info.dist.Reserve(vertices.size());
 
         const float fovRadians = camera.FOVY * (std::numbers::pi_v<float> / 180.0f);
         const Mat4f view       = camera.getViewMatrix();
@@ -36,6 +34,8 @@ namespace Pumpkin {
                 o.normal = Vec3f{ n[0], n[1], n[2] }.Normalized();
 
                 const uint32_t c = Outcode(o.position);
+                info.codes[i] = static_cast<std::uint8_t>(c);
+                info.dist[i]  = o.position[2] + o.position[3];
                 a &= c;
                 _or |= c;
             }
