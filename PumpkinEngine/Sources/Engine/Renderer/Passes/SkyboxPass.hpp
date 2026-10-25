@@ -27,5 +27,9 @@ namespace Pumpkin {
         int m_cachedWidth = 0;
         int m_cachedHeight = 0;
         float m_cachedFov = -1.0f;
+
+        std::vector<uint32_t> m_packed;
+        const void* m_packedSrc = nullptr;
+        int m_packedW = 0, m_packedH = 0;
     };
 }

@@ -55,106 +55,144 @@ namespace Pumpkin {
     void SkyboxPass::Execute(RenderContext& ctx) {
         const int width = ctx.fb.width;
         const int height = ctx.fb.height;
+        const int tw = m_texture.width;
+        const int th = m_texture.height;
 
-        if (width <= 0 || height <= 0 ||
-            !ctx.fb.pixels ||
-            m_texture.width <= 0 ||
-            m_texture.height <= 0 ||
-            m_texture.pixels.empty()) {
+        if (width <= 0 || height <= 0 || !ctx.fb.pixels ||
+            tw <= 0 || th <= 0 || m_texture.pixels.empty()) {
             return;
         }
 
         const float fov = ctx.camera.FOVY;
-
-        if (m_cachedWidth != width ||
-            m_cachedHeight != height ||
-            m_cachedFov != fov) {
-
+        if (m_cachedWidth != width || m_cachedHeight != height || m_cachedFov != fov) {
             const float aspect = static_cast<float>(width) / height;
             const float tanHalfFov = std::tan(fov * Pi / 360.0f);
 
-            m_rayX.resize(width);
+            m_rayX.resize(width + 1);
             m_rayY.resize(height);
 
-            for (int x = 0; x < width; ++x) {
-                m_rayX[x] =
-                    (2.0f * (x + 0.5f) / width - 1.0f)
-                    * aspect * tanHalfFov;
-            }
-
-            for (int y = 0; y < height; ++y) {
-                m_rayY[y] =
-                    (1.0f - 2.0f * (y + 0.5f) / height)
-                    * tanHalfFov;
-            }
+            for (int x = 0; x <= width; ++x)
+                m_rayX[x] = (2.0f * (x + 0.5f) / width - 1.0f) * aspect * tanHalfFov;
+            for (int y = 0; y < height; ++y)
+                m_rayY[y] = (1.0f - 2.0f * (y + 0.5f) / height) * tanHalfFov;
 
             m_cachedWidth = width;
             m_cachedHeight = height;
             m_cachedFov = fov;
         }
 
+        // Pre-packed texture, rebuilt if modified
+        const void* src = m_texture.pixels.data();
+        if (m_packedSrc != src || m_packedW != tw || m_packedH != th) {
+            m_packed.resize(static_cast<size_t>(tw) * th);
+            uint32_t* out = m_packed.data();
+
+            const auto packRows = [&](size_t y) {
+                const float v = (static_cast<float>(y) + 0.5f) / th;
+                for (int x = 0; x < tw; ++x) {
+                    const Color c = SampleTexture(m_texture, (x + 0.5f) / tw, v);
+                    out[y * tw + x] = ToRGBA(
+                        static_cast<float>(c.r), static_cast<float>(c.g),
+                        static_cast<float>(c.b), static_cast<float>(c.a));
+                }
+            };
+            ParallelFor(GetPool(), static_cast<size_t>(th), packRows);
+
+            m_packedSrc = src;
+            m_packedW = tw;
+            m_packedH = th;
+        }
+
+        const uint32_t* const tex = m_packed.data();
+        const auto ftw = static_cast<float>(tw);
+        const auto fth = static_cast<float>(th);
+
         const Vec3f front = ctx.camera.front.Normalized();
         const Vec3f right = ctx.camera.right.Normalized();
         const Vec3f up = ctx.camera.up.Normalized();
 
+        const float fx = front[0], fy = front[1], fz = front[2];
+        const float rx_ = right[0], ry_ = right[1], rz_ = right[2];
+        const float ux = up[0], uy = up[1], uz = up[2];
+
+        constexpr float InvTwoPi = 1.0f / (2.0f * Pi);
+        constexpr float InvPi = 1.0f / Pi;
+        constexpr int Step = 8;               // pixels between two exact nodes
+        constexpr float MaxSegmentDu = 0.1f;  // poles get exact calculation
+
         constexpr size_t RowsPerChunk = 8;
-        const size_t chunkCount =
-            (static_cast<size_t>(height) + RowsPerChunk - 1)
-            / RowsPerChunk;
+        const size_t chunkCount = (static_cast<size_t>(height) + RowsPerChunk - 1) / RowsPerChunk;
 
         const auto renderChunk = [&](size_t chunk) {
             const int startY = static_cast<int>(chunk * RowsPerChunk);
-            const int endY = std::min(
-                height,
-                startY + static_cast<int>(RowsPerChunk)
-            );
+            const int endY = std::min(height, startY + static_cast<int>(RowsPerChunk));
 
             for (int y = startY; y < endY; ++y) {
-                const float rayY = m_rayY[y];
-                const Vec3f rowRay = front + up * rayY;
+                const float ry = m_rayY[y];
+                const float bx = fx + ux * ry;
+                const float by = fy + uy * ry;
+                const float bz = fz + uz * ry;
 
-                uint32_t* dst =
-                    ctx.fb.pixels + static_cast<size_t>(y) * width;
+                uint32_t* dst = ctx.fb.pixels + static_cast<size_t>(y) * width;
 
-                for (int x = 0; x < width; ++x) {
-                    const Vec3f ray = rowRay + right * m_rayX[x];
+                // Exact uvs for the x column
+                const auto exact = [&](int x, float& u, float& v) {
+                    const float rx = m_rayX[x];
+                    const float dx = bx + rx_ * rx;
+                    const float dy = by + ry_ * rx;
+                    const float dz = bz + rz_ * rx;
+                    const float len2 = std::max(dx * dx + dy * dy + dz * dz, 1e-12f);
+                    u = FastAtan2(dz, dx) * InvTwoPi + 0.5f;
+                    v = FastAsin(dy / std::sqrt(len2)) * InvPi + 0.5f;
+                };
 
-                    const float lengthSquared =
-                        ray[0] * ray[0] +
-                        ray[1] * ray[1] +
-                        ray[2] * ray[2];
+                const auto put = [&](int x, float u, float v) {
+                    int ix = static_cast<int>((u + 1.0f) * ftw);
+                    if (ix >= 2 * tw) ix -= 2 * tw;
+                    if (ix >= tw) ix -= tw;
+                    const int iy = std::clamp(static_cast<int>(v * fth), 0, th - 1);
+                    dst[x] = tex[static_cast<size_t>(iy) * tw + ix];
+                };
 
-                    if (lengthSquared <= 1e-12f)
-                        continue;
+                float u0, v0;
+                exact(0, u0, v0);
 
-                    const float invLength =
-                        1.0f / std::sqrt(lengthSquared);
+                for (int x0 = 0; x0 < width; x0 += Step) {
+                    const int x1 = std::min(x0 + Step, width);
+                    const int span = x1 - x0;
 
-                    const float u =
-                        FastAtan2(ray[2], ray[0])
-                        / (2.0f * Pi) + 0.5f;
+                    float u1, v1;
+                    exact(x1, u1, v1);
 
-                    const float v =
-                        FastAsin(ray[1] * invLength)
-                        / Pi + 0.5f;
+                    float u1w = u1;
+                    const float d = u1 - u0;
+                    if (d > 0.5f) u1w -= 1.0f;
+                    else if (d < -0.5f) u1w += 1.0f;
 
-                    const Color texel =
-                        SampleTexture(m_texture, u, v);
+                    if (std::abs(u1w - u0) > MaxSegmentDu) {
+                        for (int x = x0; x < x1; ++x) {
+                            float u, v;
+                            exact(x, u, v);
+                            put(x, u, v);
+                        }
+                    }
+                    else {
+                        const float inv = 1.0f / span;
+                        const float du = (u1w - u0) * inv;
+                        const float dv = (v1 - v0) * inv;
+                        float u = u0, v = v0;
+                        for (int x = x0; x < x1; ++x) {
+                            put(x, u, v);
+                            u += du;
+                            v += dv;
+                        }
+                    }
 
-                    const uint32_t r = texel.r;
-                    const uint32_t g = texel.g;
-                    const uint32_t b = texel.b;
-                    const uint32_t a = texel.a;
-
-                    dst[x] = ToRGBA(
-                        static_cast<float>(r),
-                        static_cast<float>(g),
-                        static_cast<float>(b),
-                        static_cast<float>(a)
-                    );
+                    u0 = u1;
+                    v0 = v1;
                 }
             }
-            };
+        };
 
         if (chunkCount <= 1)
             renderChunk(0);
