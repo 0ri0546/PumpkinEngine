@@ -3,6 +3,8 @@ export module Pumpkin.Renderer.Passes.Text;
 import Pumpkin.Renderer.RenderPass;
 import Pumpkin.Renderer.Types;
 
+import std;
+
 export namespace Pumpkin {
     class TextPass final : public RenderPass {
     public:

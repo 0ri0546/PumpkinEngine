@@ -146,8 +146,6 @@ export {
     using Quaternionf = Quaternion<float>;
     using Quaterniond = Quaternion<double>;
 
-    template <Numeral T>
-    struct std::formatter<Quaternion<T>>;
 }
 
 #include "Quaternion.inl"

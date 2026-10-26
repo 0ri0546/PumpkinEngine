@@ -497,24 +497,26 @@ inline constexpr Quaternion<T> RotateTowards(const Quaternion<T>& from, const Qu
     return SlerpUnclamped(from, to, t);
 }
 
-template <Numeral T>
-struct std::formatter<Quaternion<T>> {
-    std::formatter<T> underlying;
+namespace std {
+    template <Numeral T>
+    struct formatter<Quaternion<T>> {
+        formatter<T> underlying;
 
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return underlying.parse(ctx);
-    }
+        constexpr auto parse(format_parse_context& ctx) {
+            return underlying.parse(ctx);
+        }
 
-    auto format(const Quaternion<T>& obj, std::format_context& ctx) const {
-        auto out = ctx.out();
-        out = std::format_to(out, "(");
-        out = underlying.format(obj[0], ctx);
-        out = std::format_to(out, ", ");
-        out = underlying.format(obj[1], ctx);
-        out = std::format_to(out, ", ");
-        out = underlying.format(obj[2], ctx);
-        out = std::format_to(out, ", ");
-        out = underlying.format(obj[3], ctx);
-        return std::format_to(out, ")");
-    }
-};
+        auto format(const Quaternion<T>& obj, format_context& ctx) const {
+            auto out = ctx.out();
+            out = format_to(out, "(");
+            out = underlying.format(obj[0], ctx);
+            out = format_to(out, ", ");
+            out = underlying.format(obj[1], ctx);
+            out = format_to(out, ", ");
+            out = underlying.format(obj[2], ctx);
+            out = format_to(out, ", ");
+            out = underlying.format(obj[3], ctx);
+            return format_to(out, ")");
+        }
+    };
+}

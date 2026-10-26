@@ -5,6 +5,7 @@ module;
 export module Pumpkin.Renderer.RasterizerDetail;
 
 import Pumpkin.Renderer.Types;
+import Pumpkin.Renderer.Passes.Binning;
 import Pumpkin.Utils.SIMDTraits;
 
 import std;
@@ -121,5 +122,169 @@ export namespace Pumpkin::Detail {
         case BlendMode::None:     return s;
         }
         return s;
+    }
+
+    // Reused every frame so we don't allocate again (shared by all shader types).
+    inline BinData& FrameBins() {
+        static BinData bins;
+        return bins;
+    }
+
+    using TexelSIMD = __m256i;
+
+    // 8 texels at once: wrap, UV -> pixel, clamp, gather. Returns 8 packed pixels in the texture's layout.
+    [[nodiscard]] inline TexelSIMD SampleTexture8(const std::uint32_t* texels, int width, int height,
+        V::type u, V::type v) {
+        u = V::sub(u, _mm256_floor_ps(u));
+        v = V::sub(v, _mm256_floor_ps(v));
+
+        TexelSIMD x = _mm256_cvttps_epi32(V::mul(u, V::set1(static_cast<float>(width))));
+        TexelSIMD y = _mm256_cvttps_epi32(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))));
+
+        const TexelSIMD zero = _mm256_setzero_si256();
+        x = _mm256_min_epi32(_mm256_max_epi32(x, zero), _mm256_set1_epi32(width - 1));
+        y = _mm256_min_epi32(_mm256_max_epi32(y, zero), _mm256_set1_epi32(height - 1));
+
+        const TexelSIMD index = _mm256_add_epi32(_mm256_mullo_epi32(y, _mm256_set1_epi32(width)), x);
+        return _mm256_i32gather_epi32(reinterpret_cast<const int*>(texels), index, 4);
+    }
+
+    // Four filtered channels (0..255 floats) for 8 pixels.
+    struct Texel8 { V::type r, g, b, a; };
+
+    // The four neighbouring texels of 8 pixels, plus the fractional position between them.
+    struct BilinearTaps { TexelSIMD t00, t10, t01, t11; V::type tx, ty; };
+
+    template <int Shift>
+    [[nodiscard]] inline V::type BilerpChannel(TexelSIMD t00, TexelSIMD t10, TexelSIMD t01, TexelSIMD t11,
+        V::type tx, V::type ty) {
+        const auto lerp = [](V::type a, V::type b, V::type t) {
+            return V::add(a, V::mul(V::sub(b, a), t));
+        };
+        const V::type top    = lerp(Channel<Shift>(t00), Channel<Shift>(t10), tx);
+        const V::type bottom = lerp(Channel<Shift>(t01), Channel<Shift>(t11), tx);
+        return lerp(top, bottom, ty);
+    }
+
+    // Repeat wrapping, 4 gathers. Shared by every bilinear sampler below.
+    [[nodiscard]] inline BilinearTaps GatherBilinear8(const std::uint32_t* texels, int width, int height,
+        V::type u, V::type v) {
+        u = V::sub(u, _mm256_floor_ps(u));
+        v = V::sub(v, _mm256_floor_ps(v));
+
+        // Texel is centered at 0.5
+        // Shifting by half a texel
+        const V::type half = V::set1(0.5f);
+        const V::type fx = V::sub(V::mul(u, V::set1(static_cast<float>(width))), half);
+        const V::type fy = V::sub(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))), half);
+        const V::type flx = _mm256_floor_ps(fx);
+        const V::type fly = _mm256_floor_ps(fy);
+        const V::type tx = V::sub(fx, flx);
+        const V::type ty = V::sub(fy, fly);
+
+        const TexelSIMD zero = _mm256_setzero_si256();
+        const TexelSIMD one = _mm256_set1_epi32(1);
+        const TexelSIMD wMax = _mm256_set1_epi32(width - 1);
+        const TexelSIMD hMax = _mm256_set1_epi32(height - 1);
+
+        // x0 is in [-1, width-1], x1 in [0, width]
+        // Wrapping the two edge cases.
+        TexelSIMD x0 = _mm256_cvttps_epi32(flx);
+        TexelSIMD y0 = _mm256_cvttps_epi32(fly);
+        TexelSIMD x1 = _mm256_add_epi32(x0, one);
+        TexelSIMD y1 = _mm256_add_epi32(y0, one);
+
+        x0 = _mm256_blendv_epi8(x0, wMax, _mm256_cmpgt_epi32(zero, x0));
+        y0 = _mm256_blendv_epi8(y0, hMax, _mm256_cmpgt_epi32(zero, y0));
+        x1 = _mm256_andnot_si256(_mm256_cmpgt_epi32(x1, wMax), x1);
+        y1 = _mm256_andnot_si256(_mm256_cmpgt_epi32(y1, hMax), y1);
+
+        const TexelSIMD stride = _mm256_set1_epi32(width);
+        const TexelSIMD row0 = _mm256_mullo_epi32(y0, stride);
+        const TexelSIMD row1 = _mm256_mullo_epi32(y1, stride);
+
+        // The four nearest texels, see:
+        // https://github.com/rodrigogq/3d-cpu-engine/tree/main/chapter-12-clipping-filtering#128--bilinear-filtering
+        const int* base = reinterpret_cast<const int*>(texels);
+        return {
+            _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x0), 4), // t00
+            _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x1), 4), // t01
+            _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x0), 4), // t10
+            _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x1), 4), // t11
+            tx, ty
+        };
+    }
+
+    // Bilinear, all four channels (albedo, normal map).
+    [[nodiscard]] inline Texel8 SampleTexture8Bilinear(const std::uint32_t* texels, int width, int height,
+        V::type u, V::type v) {
+        const BilinearTaps k = GatherBilinear8(texels, width, height, u, v);
+        return {
+            BilerpChannel<24>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
+            BilerpChannel<16>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
+            BilerpChannel<8>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
+            BilerpChannel<0>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty)
+        };
+    }
+
+    // Bilinear, one channel only (metallic, roughness, AO): skips the work for the other three.
+    template <int Shift>
+    [[nodiscard]] inline V::type SampleTexture8BilinearChannel(const std::uint32_t* texels, int width, int height,
+        V::type u, V::type v) {
+        const BilinearTaps k = GatherBilinear8(texels, width, height, u, v);
+        return BilerpChannel<Shift>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty);
+    }
+
+    // Scalar versions, same maths, for the 0..7 pixel tail.
+    struct TexelF { float r, g, b, a; };
+    struct BilinearTapsF { std::uint32_t t00, t10, t01, t11; float tx, ty; };
+
+    [[nodiscard]] inline BilinearTapsF GatherBilinear(const Texture& tex, float u, float v) {
+        const int w = tex.width;
+        const int h = tex.height;
+
+        u -= std::floor(u);
+        v -= std::floor(v);
+
+        const float fx = u * static_cast<float>(w) - 0.5f;
+        const float fy = (1.0f - v) * static_cast<float>(h) - 0.5f;
+        const float flx = std::floor(fx), fly = std::floor(fy);
+
+        int x0 = static_cast<int>(flx), y0 = static_cast<int>(fly);
+        int x1 = x0 + 1, y1 = y0 + 1;
+        if (x0 < 0) x0 = w - 1;
+        if (y0 < 0) y0 = h - 1;
+        if (x1 >= w) x1 = 0;
+        if (y1 >= h) y1 = 0;
+
+        const std::uint32_t* p = tex.pixels.data();
+        return { p[y0 * w + x0], p[y0 * w + x1], p[y1 * w + x0], p[y1 * w + x1], fx - flx, fy - fly };
+    }
+
+    template <int Shift>
+    [[nodiscard]] inline float BilerpChannelF(const BilinearTapsF& k) {
+        const auto f = [](const std::uint32_t t) { return static_cast<float>((t >> Shift) & 0xFF); };
+        const float top    = f(k.t00) + (f(k.t10) - f(k.t00)) * k.tx;
+        const float bottom = f(k.t01) + (f(k.t11) - f(k.t01)) * k.tx;
+        return top + (bottom - top) * k.ty;
+    }
+
+    [[nodiscard]] inline TexelF SampleTextureBilinear(const Texture& tex, float u, float v) {
+        const BilinearTapsF k = GatherBilinear(tex, u, v);
+        return { BilerpChannelF<24>(k), BilerpChannelF<16>(k), BilerpChannelF<8>(k), BilerpChannelF<0>(k) };
+    }
+
+    template <int Shift>
+    [[nodiscard]] inline float SampleTextureBilinearChannel(const Texture& tex, float u, float v) {
+        return BilerpChannelF<Shift>(GatherBilinear(tex, u, v));
+    }
+
+    [[nodiscard]] inline V::type SqrtMaxEps(V::type len2) {
+        return _mm256_sqrt_ps(_mm256_max_ps(len2, V::set1(1e-8f)));
+    }
+
+    // Loads 8 packed BGRA pixels (unaligned).
+    [[nodiscard]] inline TexelSIMD LoadPixels(const std::uint32_t* src) {
+        return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
     }
 }

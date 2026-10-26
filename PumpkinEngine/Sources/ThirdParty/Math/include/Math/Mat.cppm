@@ -247,9 +247,6 @@ export {
     using Mat3dColumnMajor = Mat3ColumnMajor<double>;
     using Mat4dColumnMajor = Mat4ColumnMajor<double>;
 
-    template <Numeral T, std::size_t RowCount, std::size_t ColCount, typename Layout>
-    struct std::formatter<Mat<T, RowCount, ColCount, Layout>>;
-
 }
 
 #include "Mat.inl"

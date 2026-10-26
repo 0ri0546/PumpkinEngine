@@ -1,5 +1,6 @@
 module;
 
+#include <SDL_FixedIncludes.h>
 #include <SDL3/SDL_ttf.h>
 
 export module Pumpkin.Renderer.Types;

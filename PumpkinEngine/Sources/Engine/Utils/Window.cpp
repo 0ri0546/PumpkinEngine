@@ -1,6 +1,6 @@
 module;
 
-#include <SDL3/SDL.h>
+#include <SDL_FixedIncludes.h>
 
 module Pumpkin.Utils.Window;
 

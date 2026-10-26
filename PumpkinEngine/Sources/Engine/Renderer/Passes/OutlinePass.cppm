@@ -2,6 +2,8 @@ export module Pumpkin.Renderer.Passes.Outline;
 
 import Pumpkin.Renderer.RenderPass;
 
+import std;
+
 export namespace Pumpkin {
     class OutlinePass final : public RenderPass {
     public:

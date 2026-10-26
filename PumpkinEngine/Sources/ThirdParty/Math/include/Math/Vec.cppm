@@ -4,7 +4,7 @@ import std;
 
 import Pumpkin.Math.Concepts;
 
-export  {
+export {
     template <Numeral T, std::size_t N>
     class Vec {
     public:
@@ -143,8 +143,6 @@ export  {
     using Vec3uul = Vec3<std::uint64_t>;
     using Vec4uul = Vec4<std::uint64_t>;
 
-    template <Numeral T, std::size_t N>
-    struct std::formatter<Vec<T, N>>;
 }
 
 #include "Vec.inl"

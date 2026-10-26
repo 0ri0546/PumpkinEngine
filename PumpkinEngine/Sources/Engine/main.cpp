@@ -1,4 +1,4 @@
-#include <SDL3/SDL.h>
+#include <SDL_FixedIncludes.h>
 
 import Pumpkin.Renderer.Camera;
 import Pumpkin.Renderer.Texture;
@@ -22,6 +22,7 @@ import Pumpkin.Utils.Utils;
 import Pumpkin.Utils.Window;
 
 import Pumpkin.Math.Mat;
+import Pumpkin.Math.Quaternion;
 
 import std;
 
