@@ -1,10 +1,9 @@
-#include "OutlinePass.hpp"
+module Pumpkin.Renderer.Passes.Outline;
 
-#include <algorithm>
-#include <cmath>
-#include <cstddef>
+import std;
 
-#include <Utils/ThreadPool.hpp>
+import Pumpkin.Renderer.Types;
+import Pumpkin.Utils.ThreadPool;
 
 namespace Pumpkin {
     void OutlinePass::Execute(RenderContext& ctx) {

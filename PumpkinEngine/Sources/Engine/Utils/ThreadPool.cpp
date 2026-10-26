@@ -1,8 +1,6 @@
-#include "ThreadPool.hpp"
+module Pumpkin.Utils.ThreadPool;
 
-#include <barrier>
-#include <functional>
-#include <vector>
+import std;
 
 namespace Pumpkin {
     // `workers` extra threads. The calling thread also works in Run().

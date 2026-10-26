@@ -1,7 +1,11 @@
-#include "ParticlePass.hpp"
+module Pumpkin.Renderer.Passes.Particle;
 
-#include <algorithm>
-#include <numbers>
+import Pumpkin.Renderer.Particles;
+
+import Pumpkin.Math.Mat;
+import Pumpkin.Math.Vec;
+
+import std;
 
 namespace Pumpkin {
 
@@ -69,8 +73,8 @@ namespace Pumpkin {
 
                 const float depth = zNdc * 0.5f + 0.5f;
 
-                const size_t index =
-                    static_cast<size_t>(y) * ctx.fb.width + x;
+                const std::size_t index =
+                    static_cast<std::size_t>(y) * ctx.fb.width + x;
 
                 if (depth >= ctx.db.pixels[index])
                     continue;

@@ -766,37 +766,39 @@ inline constexpr bool ValidTRS(const Mat<T, RowCount, ColCount, Layout>& mat) {
     }
 }
 
-template <Numeral T, std::size_t RowCount, std::size_t ColCount, typename Layout>
-struct std::formatter<Mat<T, RowCount, ColCount, Layout>> {
-    std::formatter<T> underlying;
+namespace std {
+    template <Numeral T, size_t RowCount, size_t ColCount, typename Layout>
+    struct formatter<Mat<T, RowCount, ColCount, Layout>> {
+        formatter<T> underlying;
 
-    constexpr auto parse(std::format_parse_context& ctx) {
-        return underlying.parse(ctx);
-    }
-
-    auto format(const Mat<T, RowCount, ColCount, Layout>& obj, std::format_context& ctx) const {
-        auto out = ctx.out();
-
-        out = std::format_to(out, "[");
-
-        for (std::size_t row = 0; row < RowCount; ++row) {
-            if (row != 0) {
-                out = std::format_to(out, ", ");
-            }
-
-            out = std::format_to(out, "[");
-
-            for (std::size_t col = 0; col < ColCount; ++col) {
-                if (col != 0) {
-                    out = std::format_to(out, ", ");
-                }
-
-                out = underlying.format(obj[row, col], ctx);
-            }
-
-            out = std::format_to(out, "]");
+        constexpr auto parse(format_parse_context& ctx) {
+            return underlying.parse(ctx);
         }
 
-        return std::format_to(out, "]");
-    }
-};
+        auto format(const Mat<T, RowCount, ColCount, Layout>& obj, format_context& ctx) const {
+            auto out = ctx.out();
+
+            out = format_to(out, "[");
+
+            for (size_t row = 0; row < RowCount; ++row) {
+                if (row != 0) {
+                    out = format_to(out, ", ");
+                }
+
+                out = format_to(out, "[");
+
+                for (size_t col = 0; col < ColCount; ++col) {
+                    if (col != 0) {
+                        out = format_to(out, ", ");
+                    }
+
+                    out = underlying.format(obj[row, col], ctx);
+                }
+
+                out = format_to(out, "]");
+            }
+
+            return format_to(out, "]");
+        }
+    };
+}

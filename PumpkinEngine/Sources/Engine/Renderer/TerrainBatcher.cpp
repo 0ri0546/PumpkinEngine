@@ -1,11 +1,12 @@
-#include <Renderer/TerrainBatcher.hpp>
+module Pumpkin.Renderer.TerrainBatcher;
 
-#include <algorithm>
-#include <cstdint>
-#include <ranges>
-#include <utility>
+import Pumpkin.Renderer.TerrainGenerator;
+import Pumpkin.Renderer.Shaders;
+import Pumpkin.Utils.ThreadPool;
 
-#include <Renderer/Shaders.hpp>
+import Pumpkin.Math.Vec;
+
+import std;
 
 namespace Pumpkin {
     namespace {

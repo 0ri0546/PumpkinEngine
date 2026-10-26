@@ -1,42 +1,30 @@
-#include <array>
-#include <chrono>
-#include <cmath>
-#include <cstddef>
-#include <cstdint>
-#include <format>
-#include <memory>
-#include <numbers>
-#include <print>
-#include <thread>
-#include <vector>
+#include <SDL_FixedIncludes.h>
 
-#include <Math/Mat.h>
-#include <SDL3/SDL.h>
+import Pumpkin.Renderer.Camera;
+import Pumpkin.Renderer.Texture;
+import Pumpkin.Renderer.MeshLoader;
+import Pumpkin.Renderer.Particles;
+import Pumpkin.Renderer.ParticleSystem;
+import Pumpkin.Renderer.Passes.Outline;
+import Pumpkin.Renderer.Passes.Clear;
+import Pumpkin.Renderer.Passes.Geometry;
+import Pumpkin.Renderer.Passes.Particle;
+import Pumpkin.Renderer.Passes.Skybox;
+import Pumpkin.Renderer.Passes.Text;
+import Pumpkin.Renderer.Renderer;
+import Pumpkin.Renderer.RenderPass;
+import Pumpkin.Renderer.TerrainBatcher;
+import Pumpkin.Renderer.TerrainGenerator;
+import Pumpkin.Renderer.Types;
+import Pumpkin.Utils.Events;
+import Pumpkin.Utils.RenderProfiler;
+import Pumpkin.Utils.Utils;
+import Pumpkin.Utils.Window;
 
-#include <Renderer/Camera.hpp>
-#include <Renderer/Fragment.hpp>
-#include <Renderer/MeshLoader.hpp>
-#include <Renderer/PrimitiveAssembly.hpp>
-#include <Renderer/Renderer.hpp>
-#include <Renderer/Shaders.hpp>
-#include <Renderer/TerrainBatcher.hpp>
-#include <Renderer/TerrainGenerator.hpp>
-#include <Renderer/Texture.hpp>
-#include <Renderer/Transform.hpp>
-#include <Renderer/Types.hpp>
-#include <Utils/RenderProfiler.hpp>
-#include <Utils/Utils.hpp>
-#include <Utils/Window.hpp>
-#include <Utils/Events/Events.hpp>
+import Pumpkin.Math.Mat;
+import Pumpkin.Math.Quaternion;
 
-#include <Renderer/Passes/ClearPass.hpp>
-#include <Renderer/Passes/GeometryPass.hpp>
-#include <Renderer/Passes/TextPass.hpp>
-#include <Renderer/Particles.hpp>
-#include <Renderer/ParticleSystem.hpp>
-#include <Renderer/Passes/ParticlePass.hpp>
-#include <Renderer/Passes/SkyboxPass.hpp>
-#include <Renderer/Passes/OutlinePass.hpp>
+import std;
 
 using namespace Pumpkin;
 

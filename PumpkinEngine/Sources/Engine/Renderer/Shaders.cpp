@@ -1,8 +1,8 @@
-#include "Shaders.hpp"
+module Pumpkin.Renderer.Shaders;
 
-#include <numbers>
+import Pumpkin.Utils.ThreadPool;
 
-#include <Renderer/Rasterizer.hpp>
+import std;
 
 namespace Pumpkin {
     ClipFlags VertexShader(std::span<const Vertex> vertices, std::vector<Vertex>& out,
@@ -19,11 +19,11 @@ namespace Pumpkin {
         const Mat4f viewModel = view * model;
         const Mat4f mvp       = projection * viewModel;
 
-        std::atomic<uint32_t> andCode{ 0x3F }, orCode{ 0 };
+        std::atomic<std::uint32_t> andCode{ 0x3F }, orCode{ 0 };
 
-        const auto transform = [&](size_t begin, size_t end) {
-            uint32_t a = 0x3F, _or = 0;
-            for (size_t i = begin; i < end; ++i) {
+        const auto transform = [&](std::size_t begin, std::size_t end) {
+            std::uint32_t a = 0x3F, _or = 0;
+            for (std::size_t i = begin; i < end; ++i) {
                 const Vertex& v = vertices[i];
                 Vertex& o = out[i];
                 o = v; // keeps uv etc.
@@ -33,7 +33,7 @@ namespace Pumpkin {
                 const Vec4f n = viewModel * Vec4f{ v.normal[0], v.normal[1], v.normal[2], 0.0f };
                 o.normal = Vec3f{ n[0], n[1], n[2] }.Normalized();
 
-                const uint32_t c = Outcode(o.position);
+                const std::uint32_t c = Outcode(o.position);
                 info.codes[i] = static_cast<std::uint8_t>(c);
                 info.dist[i]  = o.position[2] + o.position[3];
                 a &= c;
@@ -43,13 +43,13 @@ namespace Pumpkin {
             orCode.fetch_or(_or,  std::memory_order_relaxed);
         };
 
-        constexpr size_t kChunk = 4096;
-        const size_t count  = vertices.size();
-        const size_t chunks = (count + kChunk - 1) / kChunk;
+        constexpr std::size_t kChunk = 4096;
+        const std::size_t count  = vertices.size();
+        const std::size_t chunks = (count + kChunk - 1) / kChunk;
         if (chunks <= 1) {
             transform(0, count);
         } else {
-            ParallelFor(GetPool(), chunks, [&](size_t c) {
+            ParallelFor(GetPool(), chunks, [&](std::size_t c) {
                 transform(c * kChunk, std::min(count, (c + 1) * kChunk));
             });
         }

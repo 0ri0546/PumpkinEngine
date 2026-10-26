@@ -1,6 +1,10 @@
-#include <Utils/Window.hpp>
+module;
 
-#include <cstddef>
+#include <SDL_FixedIncludes.h>
+
+module Pumpkin.Utils.Window;
+
+import std;
 
 namespace Pumpkin {
     void SetMultiResWindowIcon(SDL_Window* window) {

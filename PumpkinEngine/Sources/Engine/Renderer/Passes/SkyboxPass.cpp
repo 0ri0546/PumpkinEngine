@@ -1,13 +1,13 @@
+module Pumpkin.Renderer.Passes.Skybox;
 
-#include "SkyboxPass.hpp"
+import Pumpkin.Renderer.Texture;
+import Pumpkin.Renderer.Types;
+import Pumpkin.Utils.ThreadPool;
+import Pumpkin.Utils.Utils;
 
-#include <algorithm>
-#include <cmath>
-#include <numbers>
+import Pumpkin.Math.Vec;
 
-#include <Renderer/Texture.hpp>
-#include <Utils/ThreadPool.hpp>
-#include <Utils/Utils.hpp>
+import std;
 
 namespace Pumpkin {
     namespace {
@@ -84,10 +84,10 @@ namespace Pumpkin {
         // Pre-packed texture, rebuilt if modified
         const void* src = m_texture.pixels.data();
         if (m_packedSrc != src || m_packedW != tw || m_packedH != th) {
-            m_packed.resize(static_cast<size_t>(tw) * th);
-            uint32_t* out = m_packed.data();
+            m_packed.resize(static_cast<std::size_t>(tw) * th);
+            std::uint32_t* out = m_packed.data();
 
-            const auto packRows = [&](size_t y) {
+            const auto packRows = [&](std::size_t y) {
                 const float v = (static_cast<float>(y) + 0.5f) / th;
                 for (int x = 0; x < tw; ++x) {
                     const Color c = SampleTexture(m_texture, (x + 0.5f) / tw, v);
@@ -96,14 +96,14 @@ namespace Pumpkin {
                         static_cast<float>(c.b), static_cast<float>(c.a));
                 }
             };
-            ParallelFor(GetPool(), static_cast<size_t>(th), packRows);
+            ParallelFor(GetPool(), static_cast<std::size_t>(th), packRows);
 
             m_packedSrc = src;
             m_packedW = tw;
             m_packedH = th;
         }
 
-        const uint32_t* const tex = m_packed.data();
+        const std::uint32_t* const tex = m_packed.data();
         const auto ftw = static_cast<float>(tw);
         const auto fth = static_cast<float>(th);
 
@@ -120,10 +120,10 @@ namespace Pumpkin {
         constexpr int Step = 8;               // pixels between two exact nodes
         constexpr float MaxSegmentDu = 0.1f;  // poles get exact calculation
 
-        constexpr size_t RowsPerChunk = 8;
-        const size_t chunkCount = (static_cast<size_t>(height) + RowsPerChunk - 1) / RowsPerChunk;
+        constexpr std::size_t RowsPerChunk = 8;
+        const std::size_t chunkCount = (static_cast<std::size_t>(height) + RowsPerChunk - 1) / RowsPerChunk;
 
-        const auto renderChunk = [&](size_t chunk) {
+        const auto renderChunk = [&](std::size_t chunk) {
             const int startY = static_cast<int>(chunk * RowsPerChunk);
             const int endY = std::min(height, startY + static_cast<int>(RowsPerChunk));
 
@@ -133,7 +133,7 @@ namespace Pumpkin {
                 const float by = fy + uy * ry;
                 const float bz = fz + uz * ry;
 
-                uint32_t* dst = ctx.fb.pixels + static_cast<size_t>(y) * width;
+                std::uint32_t* dst = ctx.fb.pixels + static_cast<std::size_t>(y) * width;
 
                 // Exact uvs for the x column
                 const auto exact = [&](int x, float& u, float& v) {
@@ -151,7 +151,7 @@ namespace Pumpkin {
                     if (ix >= 2 * tw) ix -= 2 * tw;
                     if (ix >= tw) ix -= tw;
                     const int iy = std::clamp(static_cast<int>(v * fth), 0, th - 1);
-                    dst[x] = tex[static_cast<size_t>(iy) * tw + ix];
+                    dst[x] = tex[static_cast<std::size_t>(iy) * tw + ix];
                 };
 
                 float u0, v0;

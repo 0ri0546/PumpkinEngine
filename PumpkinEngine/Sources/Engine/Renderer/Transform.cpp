@@ -1,10 +1,11 @@
-#include "Transform.hpp"
+module Pumpkin.Renderer.Transform;
 
-#include <Utils/SIMDTraits.hpp>
-#include <Utils/ThreadPool.hpp>
+import Pumpkin.Utils.SIMDTraits;
+import Pumpkin.Utils.ThreadPool;
 
-#include <algorithm>
-#include <utility>
+import Pumpkin.Math.Vec;
+
+import std;
 
 namespace Pumpkin {
     using V = simd_traits<float, 256>;
@@ -97,17 +98,17 @@ namespace Pumpkin {
 
     bool ClipNearPlane(
         std::span<const Vertex> inputVertices,
-        std::span<const uint32_t> inputIndices,
+        std::span<const std::uint32_t> inputIndices,
         std::span<const Color> inputColors,
         ClipInfo& info,
         std::vector<Vertex>& outputVertices,
-        std::vector<uint32_t>& outputIndices,
+        std::vector<std::uint32_t>& outputIndices,
         std::vector<Color>& outputColors)
     {
-        constexpr size_t kTriChunk = 4096;
+        constexpr std::size_t kTriChunk = 4096;
 
-        const size_t n = std::min(inputVertices.size(), inputColors.size());
-        const size_t triCount = inputIndices.size() / 3;
+        const std::size_t n = std::min(inputVertices.size(), inputColors.size());
+        const std::size_t triCount = inputIndices.size() / 3;
         if (n == 0 || triCount == 0) {
             outputVertices.clear();
             outputIndices.clear();
@@ -119,13 +120,13 @@ namespace Pumpkin {
         static ScratchArray<std::uint8_t> used;   // 1 = vertex survives clipping
         static ScratchArray<std::uint32_t> remap; // input vertex -> output vertex
         static ScratchArray<std::uint8_t> cls;    // per triangle outside mask, 7 = dropped
-        static std::vector<uint32_t> usedCount, cutCount, indexCount; // per chunk
+        static std::vector<std::uint32_t> usedCount, cutCount, indexCount; // per chunk
 
         const float* dist = info.dist.data();           // the rest of the function keeps using dist[...]
         const std::uint8_t* codes = info.codes.data();
 
-        const size_t vertexChunks = (n + kVertexChunk - 1) / kVertexChunk;
-        const size_t triChunks = (triCount + kTriChunk - 1) / kTriChunk;
+        const std::size_t vertexChunks = (n + kVertexChunk - 1) / kVertexChunk;
+        const std::size_t triChunks = (triCount + kTriChunk - 1) / kTriChunk;
 
         used.Reserve(n);
         remap.Reserve(n);
@@ -134,9 +135,9 @@ namespace Pumpkin {
         cutCount.resize(triChunks);
         indexCount.resize(triChunks);
 
-        const auto forEachChunk = [](size_t chunks, auto&& fn) {
+        const auto forEachChunk = [](std::size_t chunks, auto&& fn) {
             if (chunks <= 1) {
-                for (size_t c = 0; c < chunks; ++c) fn(c);
+                for (std::size_t c = 0; c < chunks; ++c) fn(c);
                 return;
             }
             Pumpkin::ParallelFor(GetPool(), chunks, fn);
@@ -147,25 +148,25 @@ namespace Pumpkin {
         // Output sizes for each triangle class (index = bit mask of outside vertices)
         // 0: visible, 1/2/4: one outside (quad = 2 triangles), 3/5/6: two outside, 7: behind
         // These are every possible configurations
-        constexpr uint32_t kCuts[8]    = { 0, 2, 2, 2, 2, 2, 2, 0 };
-        constexpr uint32_t kIndices[8] = { 3, 6, 6, 3, 6, 3, 3, 0 };
+        constexpr std::uint32_t kCuts[8]    = { 0, 2, 2, 2, 2, 2, 2, 0 };
+        constexpr std::uint32_t kIndices[8] = { 3, 6, 6, 3, 6, 3, 3, 0 };
 
         // Classifies every triangle, counts its output, marks the vertices that survive
-        forEachChunk(triChunks, [&](size_t chunk) {
-            const size_t begin = chunk * kTriChunk;
-            const size_t end = std::min(triCount, begin + kTriChunk);
-            uint32_t cuts = 0, indices = 0;
+        forEachChunk(triChunks, [&](std::size_t chunk) {
+            const std::size_t begin = chunk * kTriChunk;
+            const std::size_t end = std::min(triCount, begin + kTriChunk);
+            std::uint32_t cuts = 0, indices = 0;
 
-            const auto mark = [&](uint32_t id) {
+            const auto mark = [&](std::uint32_t id) {
                 // avoids race conditions
-                std::atomic_ref<uint8_t> flag(used[id]);
+                std::atomic_ref<std::uint8_t> flag(used[id]);
                 if (flag.load(std::memory_order_relaxed) == 0)
                     flag.store(1, std::memory_order_relaxed);
             };
 
-            const uint32_t* idx = inputIndices.data() + begin * 3;
-            for (size_t t = begin; t < end; ++t, idx += 3) {
-                const uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
+            const std::uint32_t* idx = inputIndices.data() + begin * 3;
+            for (std::size_t t = begin; t < end; ++t, idx += 3) {
+                const std::uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
                 if (v0 >= n || v1 >= n || v2 >= n) { cls[t] = 7; continue; }
                 if (codes[v0] & codes[v1] & codes[v2]) { cls[t] = 7; continue; }
 
@@ -174,7 +175,7 @@ namespace Pumpkin {
                     (dist[v1] < 0.0f ? 2u : 0u) |
                     (dist[v2] < 0.0f ? 4u : 0u);
 
-                cls[t] = static_cast<uint8_t>(outside);
+                cls[t] = static_cast<std::uint8_t>(outside);
                 cuts += kCuts[outside];
                 indices += kIndices[outside];
 
@@ -189,13 +190,13 @@ namespace Pumpkin {
         });
 
         // Prefix sums over the chunks: where each chunk starts writing.
-        uint32_t cutTotal = 0;
-        size_t indexTotal = 0;
-        for (size_t c = 0; c < triChunks; ++c) {
-            const uint32_t cuts = cutCount[c];
-            const uint32_t indices = indexCount[c];
+        std::uint32_t cutTotal = 0;
+        std::size_t indexTotal = 0;
+        for (std::size_t c = 0; c < triChunks; ++c) {
+            const std::uint32_t cuts = cutCount[c];
+            const std::uint32_t indices = indexCount[c];
             cutCount[c] = cutTotal;
-            indexCount[c] = static_cast<uint32_t>(indexTotal);
+            indexCount[c] = static_cast<std::uint32_t>(indexTotal);
             cutTotal += cuts;
             indexTotal += indices;
         }
@@ -208,17 +209,17 @@ namespace Pumpkin {
         }
 
         // Counts the surviving vertices per chunk
-        forEachChunk(vertexChunks, [&](size_t chunk) {
-            const size_t begin = chunk * kVertexChunk;
-            const size_t end = std::min(n, begin + kVertexChunk);
-            uint32_t count = 0;
-            for (size_t i = begin; i < end; ++i) count += used[i];
+        forEachChunk(vertexChunks, [&](std::size_t chunk) {
+            const std::size_t begin = chunk * kVertexChunk;
+            const std::size_t end = std::min(n, begin + kVertexChunk);
+            std::uint32_t count = 0;
+            for (std::size_t i = begin; i < end; ++i) count += used[i];
             usedCount[chunk] = count;
         });
 
-        uint32_t usedTotal = 0;
-        for (size_t c = 0; c < vertexChunks; ++c) {
-            const uint32_t count = usedCount[c];
+        std::uint32_t usedTotal = 0;
+        for (std::size_t c = 0; c < vertexChunks; ++c) {
+            const std::uint32_t count = usedCount[c];
             usedCount[c] = usedTotal;
             usedTotal += count;
         }
@@ -228,11 +229,11 @@ namespace Pumpkin {
         outputIndices.resize(indexTotal);
 
         // Copies an input vertex into the output the first time it is used, then reuses it
-        forEachChunk(vertexChunks, [&](size_t chunk) {
-            const size_t begin = chunk * kVertexChunk;
-            const size_t end = std::min(n, begin + kVertexChunk);
-            uint32_t slot = usedCount[chunk];
-            for (size_t i = begin; i < end; ++i) {
+        forEachChunk(vertexChunks, [&](std::size_t chunk) {
+            const std::size_t begin = chunk * kVertexChunk;
+            const std::size_t end = std::min(n, begin + kVertexChunk);
+            std::uint32_t slot = usedCount[chunk];
+            for (std::size_t i = begin; i < end; ++i) {
                 if (!used[i]) continue;
                 remap[i] = slot;
                 outputVertices[slot] = inputVertices[i];
@@ -242,21 +243,21 @@ namespace Pumpkin {
         });
 
         // Builds the triangles. Each chunk writes into its own slice of the output
-        forEachChunk(triChunks, [&](size_t chunk) {
-            const size_t begin = chunk * kTriChunk;
-            const size_t end = std::min(triCount, begin + kTriChunk);
+        forEachChunk(triChunks, [&](std::size_t chunk) {
+            const std::size_t begin = chunk * kTriChunk;
+            const std::size_t end = std::min(triCount, begin + kTriChunk);
 
-            uint32_t nextVertex = usedTotal + cutCount[chunk];
-            size_t nextIndex = indexCount[chunk];
+            std::uint32_t nextVertex = usedTotal + cutCount[chunk];
+            std::size_t nextIndex = indexCount[chunk];
 
-            const auto outputIndex = [&](uint32_t id) -> uint32_t {
+            const auto outputIndex = [&](std::uint32_t id) -> std::uint32_t {
                 return remap[id];
             };
 
             // Point where the edge in -> out crosses the plane. Always computed from the inside
             // vertex toward the outside one, so two triangles sharing an edge get bit-identical
             // results (no cracks). din >= 0 > dout, so the division is safe and t is in [0, 1].
-            const auto cut = [&](uint32_t in, uint32_t out) -> uint32_t {
+            const auto cut = [&](std::uint32_t in, std::uint32_t out) -> std::uint32_t {
                 const float din = dist[in];
                 const float t = din / (din - dist[out]);
                 const Vertex& a = inputVertices[in];
@@ -269,18 +270,18 @@ namespace Pumpkin {
                 v.texcoord = a.texcoord + (b.texcoord - a.texcoord) * t;
                 v.normal = (a.normal + (b.normal - a.normal) * t).Normalized();
 
-                const auto lerp = [t](uint8_t x, uint8_t y) {
-                    return static_cast<uint8_t>(static_cast<float>(x) + (static_cast<float>(y) - static_cast<float>(x)) * t);
+                const auto lerp = [t](std::uint8_t x, std::uint8_t y) {
+                    return static_cast<std::uint8_t>(static_cast<float>(x) + (static_cast<float>(y) - static_cast<float>(x)) * t);
                 };
 
-                const uint32_t slot = nextVertex++;
+                const std::uint32_t slot = nextVertex++;
                 outputVertices[slot] = v;
                 outputColors[slot] = Color{ lerp(ca.r, cb.r), lerp(ca.g, cb.g), lerp(ca.b, cb.b), lerp(ca.a, cb.a) };
                 return slot;
             };
 
             // Pushes back a triangle into output indices
-            const auto pushTriangle = [&](const uint32_t a, const uint32_t b, const uint32_t c) {
+            const auto pushTriangle = [&](const std::uint32_t a, const std::uint32_t b, const std::uint32_t c) {
                 outputIndices[nextIndex++] = a;
                 outputIndices[nextIndex++] = b;
                 outputIndices[nextIndex++] = c;
@@ -288,26 +289,26 @@ namespace Pumpkin {
 
             // One vertex outside: the visible part is a quad, splits it into two triangles
             // o is the outside vertex, a and b follow it in winding order
-            const auto clipOne = [&](const uint32_t o, const uint32_t a, const uint32_t b) {
-                const uint32_t p = cut(a, o);
-                const uint32_t q = cut(b, o);
-                const uint32_t ia = outputIndex(a);
-                const uint32_t ib = outputIndex(b);
+            const auto clipOne = [&](const std::uint32_t o, const std::uint32_t a, const std::uint32_t b) {
+                const std::uint32_t p = cut(a, o);
+                const std::uint32_t q = cut(b, o);
+                const std::uint32_t ia = outputIndex(a);
+                const std::uint32_t ib = outputIndex(b);
                 pushTriangle(p, ia, ib);
                 pushTriangle(p, ib, q);
             };
 
             // Two vertices outside: a single smaller triangle, i is the inside vertex
-            const auto clipTwo = [&](uint32_t i, uint32_t o1, uint32_t o2) {
-                const uint32_t ii = outputIndex(i);
-                const uint32_t p = cut(i, o1);
-                const uint32_t q = cut(i, o2);
+            const auto clipTwo = [&](std::uint32_t i, std::uint32_t o1, std::uint32_t o2) {
+                const std::uint32_t ii = outputIndex(i);
+                const std::uint32_t p = cut(i, o1);
+                const std::uint32_t q = cut(i, o2);
                 pushTriangle(ii, p, q);
             };
 
-            const uint32_t* idx = inputIndices.data() + begin * 3;
-            for (size_t t = begin; t < end; ++t, idx += 3) {
-                const uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
+            const std::uint32_t* idx = inputIndices.data() + begin * 3;
+            for (std::size_t t = begin; t < end; ++t, idx += 3) {
+                const std::uint32_t v0 = idx[0], v1 = idx[1], v2 = idx[2];
 
                 switch (cls[t]) {
                     case 0: pushTriangle(outputIndex(v0), outputIndex(v1), outputIndex(v2)); break; // fully visible: triangle

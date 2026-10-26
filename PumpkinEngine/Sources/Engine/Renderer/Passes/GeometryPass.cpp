@@ -1,12 +1,13 @@
-#include "GeometryPass.hpp"
+module Pumpkin.Renderer.Passes.Geometry;
 
-#include <Renderer/Shaders.hpp>
-#include <Renderer/Texture.hpp>
-#include <Renderer/Transform.hpp>
-#include <Utils/RenderProfiler.hpp>
-#include <Utils/ThreadPool.hpp>
+import Pumpkin.Renderer.Fragment;
+import Pumpkin.Renderer.Shaders;
+import Pumpkin.Renderer.Texture;
+import Pumpkin.Renderer.Transform;
+import Pumpkin.Utils.ThreadPool;
+import Pumpkin.Utils.RenderProfiler;
 
-#include <ranges>
+import std;
 
 namespace Pumpkin {
     void GeometryPass::Execute(RenderContext& ctx) {
@@ -48,7 +49,7 @@ namespace Pumpkin {
         if (flags.andCode != 0) return;
 
         std::span<const Vertex>   verts   = m_clip;
-        std::span<const uint32_t> indices = item.mesh->indices;
+        std::span<const std::uint32_t> indices = item.mesh->indices;
         std::span<const Color>    colors  = item.mesh->colors;
         {
             Prof::Scope scope(Prof::Stage::Clip);
@@ -63,15 +64,15 @@ namespace Pumpkin {
                 indices = m_clippedIndices;
                 colors  = m_clippedColors;
             }
-            const size_t count = verts.size();
+            const std::size_t count = verts.size();
             m_clippedNormals.resize(count);
 
-            constexpr size_t kChunk = 16384;
-            const size_t chunks = (count + kChunk - 1) / kChunk;
-            const auto copyNormals = [&](const size_t chunk) {
-                const size_t begin = chunk * kChunk;
-                const size_t end   = std::min(count, begin + kChunk);
-                for (size_t i = begin; i < end; ++i)
+            constexpr std::size_t kChunk = 16384;
+            const std::size_t chunks = (count + kChunk - 1) / kChunk;
+            const auto copyNormals = [&](const std::size_t chunk) {
+                const std::size_t begin = chunk * kChunk;
+                const std::size_t end   = std::min(count, begin + kChunk);
+                for (std::size_t i = begin; i < end; ++i)
                     m_clippedNormals[i] = verts[i].normal;
             };
             if (chunks <= 1) copyNormals(0);

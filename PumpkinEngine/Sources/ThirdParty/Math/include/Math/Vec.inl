@@ -382,25 +382,27 @@ inline constexpr Vec<T, 2> Perpendicular(const Vec<T, 2>& v) {
     return Vec<T, 2>{-v[1], v[0]};
 }
 
-template <Numeral T, std::size_t N>
-struct std::formatter<Vec<T, N>> {
-    std::formatter<T> underlying;
+namespace std {
+    template <Numeral T, std::size_t N>
+    struct formatter<Vec<T, N>> {
+        formatter<T> underlying;
 
-   constexpr auto parse(std::format_parse_context& ctx) {
-        return underlying.parse(ctx);
-    }
-
-    auto format(const Vec<T, N>& obj, std::format_context& ctx) const {
-        auto out = ctx.out();
-        out = std::format_to(out, "(");
-
-        for (std::size_t i = 0; i < N; ++i) {
-            if (i != 0) {
-                out = std::format_to(out, ", ");
-            }
-            out = underlying.format(obj[i], ctx);
+        constexpr auto parse(format_parse_context& ctx) {
+            return underlying.parse(ctx);
         }
 
-        return std::format_to(out, ")");
-    }
-};
+        auto format(const Vec<T, N>& obj, format_context& ctx) const {
+            auto out = ctx.out();
+            out = format_to(out, "(");
+
+            for (size_t i = 0; i < N; ++i) {
+                if (i != 0) {
+                    out = std::format_to(out, ", ");
+                }
+                out = underlying.format(obj[i], ctx);
+            }
+
+            return format_to(out, ")");
+        }
+    };
+}
