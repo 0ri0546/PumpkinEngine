@@ -21,6 +21,7 @@ import Pumpkin.Utils.RenderProfiler;
 import Pumpkin.Utils.Utils;
 import Pumpkin.Utils.Window;
 import Pumpkin.UI.YAML;
+import Pumpkin.UI.Canvas;
 
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Quaternion;
@@ -211,7 +212,51 @@ int main() {
         std::println("It works bebou");
     }
 
-    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
+    constexpr int textReferenceX = 20;
+    constexpr int textReferenceY = 20;
+
+    Text text(
+        font,
+        "hello world bebou",
+        14.0f,
+        SDL_Color{ 255, 0, 0, 255 },
+        textReferenceX,
+        textReferenceY
+    );
+
+    std::ifstream uiFile("Assets/UI/MainMenu.yaml");
+
+    if (!uiFile)
+    {
+        throw std::runtime_error(
+            "Impossible d'ouvrir Assets/UI/MainMenu.yaml"
+        );
+    }
+
+    const std::string uiSource{
+        std::istreambuf_iterator<char>(uiFile),
+        std::istreambuf_iterator<char>()
+    };
+
+    const auto uiRoot = Pumpkin::UI::YAML::Parse(uiSource);
+    auto canvas = Pumpkin::UI::Canvas::FromYAML(uiRoot);
+
+    const auto UpdateUITextPosition = [&]()
+        {
+            const auto position = canvas.TransformPosition(
+                static_cast<float>(textReferenceX),
+                static_cast<float>(textReferenceY),
+                static_cast<int>(fb->width),
+                static_cast<int>(fb->height)
+            );
+
+            text.SetPosition(
+                static_cast<int>(std::lround(position.x)),
+                static_cast<int>(std::lround(position.y))
+            );
+        };
+
+    UpdateUITextPosition();
 
     auto particleSystem  = std::make_shared<ParticleSystem>(MakeSnowParticles());
     auto particleSystem2 = std::make_shared<ParticleSystem>(MakeFountainParticles());
@@ -259,6 +304,7 @@ int main() {
                 surface = SDL_GetWindowSurface(window);
                 surface->format = SDL_PIXELFORMAT_RGBA32;
                 ResizeBuffers(renderer, *fb, *db, event.window.data1, event.window.data2);
+                UpdateUITextPosition();
                 camera.aspectRatio = static_cast<float>(fb->width) / static_cast<float>(fb->height);
                 toon.resize(static_cast<std::size_t>(fb->width) * fb->height);
                 break;
