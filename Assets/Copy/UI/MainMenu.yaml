@@ -1,0 +1,83 @@
+canvas:
+  name: MainMenu
+  referenceResolution: { width: 1920, height: 1080 }
+  scaleMode: fit            # fit | stretch | constantPixelSize
+
+textures:
+  - id: panel_bg
+    path: assets/ui/panel_bg.png
+    nineSlice: { left: 16, right: 16, top: 16, bottom: 16 }
+  - id: logo
+    path: assets/ui/logo.png
+  - id: button_normal
+    path: assets/ui/button_normal.png
+  - id: button_hover
+    path: assets/ui/button_hover.png
+
+fonts:
+  - id: title_font
+    path: assets/fonts/Roboto-Bold.ttf
+    size: 48
+  - id: body_font
+    path: assets/fonts/Roboto-Regular.ttf
+    size: 24
+
+elements:
+  - type: Image
+    id: background
+    texture: panel_bg
+    anchor: stretch          # fills the whole canvas
+    color: [255, 255, 255, 255]
+
+  - type: Image
+    id: game_logo
+    texture: logo
+    anchor: top-center
+    position: { x: 0, y: 80 }
+    size: { width: 512, height: 256 }
+
+  - type: Panel
+    id: menu_panel
+    anchor: center
+    position: { x: 0, y: 100 }
+    size: { width: 400, height: 360 }
+    texture: panel_bg
+    layout:
+      direction: vertical
+      spacing: 20
+      padding: { left: 24, right: 24, top: 24, bottom: 24 }
+    children:
+      - type: Text
+        id: title_label
+        text: "Main Menu"
+        font: title_font
+        color: [255, 255, 255, 255]
+        align: center
+
+      - type: Button
+        id: play_button
+        text: "Play"
+        font: body_font
+        size: { width: 352, height: 64 }
+        textures:
+          normal: button_normal
+          hover: button_hover
+        onClick: StartGame
+
+      - type: Button
+        id: quit_button
+        text: "Quit"
+        font: body_font
+        size: { width: 352, height: 64 }
+        textures:
+          normal: button_normal
+          hover: button_hover
+        onClick: QuitGame
+
+  - type: Text
+    id: version_label
+    text: "v0.1.0"
+    font: body_font
+    color: [200, 200, 200, 255]
+    anchor: bottom-right
+    position: { x: -16, y: -16 }   # offset from the anchor

@@ -20,6 +20,7 @@ import Pumpkin.Utils.Events;
 import Pumpkin.Utils.RenderProfiler;
 import Pumpkin.Utils.Utils;
 import Pumpkin.Utils.Window;
+import Pumpkin.UI.YAML;
 
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Quaternion;
@@ -99,6 +100,7 @@ namespace {
 // ---------------------------------------------------------------------------
 
 int main() {
+    Pumpkin::UI::YAML::TestParser();
     const auto fb = std::make_unique<FrameBuffer>();
     const auto db = std::make_unique<DepthBuffer>();
 
