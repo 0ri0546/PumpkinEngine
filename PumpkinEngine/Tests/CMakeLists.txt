@@ -10,7 +10,7 @@ else()
 endif()
 target_compile_options(PumpkinTests PUBLIC ${PUMPKIN_SIMD_FLAGS})
 
-target_link_libraries(PumpkinTests PRIVATE PumpkinEngine GTest::gtest_main)
+target_link_libraries(PumpkinTests PRIVATE PumpkinEngine PumpkinThirdParty GTest::gtest_main)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
     target_link_libraries(PumpkinTests PRIVATE "-lstdc++exp")

@@ -258,6 +258,17 @@ inline constexpr Quaternion<T> Quaternion<T>::operator-() const {
 }
 
 template <Numeral T>
+inline constexpr T Quaternion<T>::operator[](const size_type index) const {
+    switch (index) {
+    case 0: return m_x;
+    case 1: return m_y;
+    case 2: return m_z;
+    case 3: return m_w;
+    default: return T{ 0 };
+    }
+}
+
+template <Numeral T>
 inline constexpr T Quaternion<T>::LengthSquared() const {
     return m_x * m_x + m_y * m_y + m_z * m_z + m_w * m_w;
 }
