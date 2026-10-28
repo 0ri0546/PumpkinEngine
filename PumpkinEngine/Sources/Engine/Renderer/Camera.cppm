@@ -1,5 +1,7 @@
 export module Pumpkin.Renderer.Camera;
 
+import Pumpkin.Renderer.Types;
+
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Vec;
 
@@ -14,6 +16,7 @@ export namespace Pumpkin {
         Vec3f right{ 1.0f, 0.0f, 0.0f };
 
         const Vec3f worldUp{ 0.0f, 1.0f, 0.0f };
+        CameraType type = CameraType::Perspective;
 
         float yaw = -90.0f;
         float pitch = 0.0f;
@@ -27,8 +30,8 @@ export namespace Pumpkin {
         float sensitivity = 0.1f;
 
         void updateVectors() {
-            const float radYaw = yaw * (3.14159265f / 180.0f);
-            const float radPitch = pitch * (3.14159265f / 180.0f);
+            const float radYaw = yaw * (std::numbers::pi_v<float> / 180.0f);
+            const float radPitch = pitch * (std::numbers::pi_v<float> / 180.0f);
 
             Vec3f newFront;
             newFront[0] = std::cos(radYaw) * std::cos(radPitch);

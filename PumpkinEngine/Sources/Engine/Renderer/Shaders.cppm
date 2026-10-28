@@ -68,8 +68,8 @@ export namespace Pumpkin {
         Shader& shader,
         const DrawItem& item
     ) {
-        static constexpr Rasterizer rasterizer{
-            .Projection = CameraType::Orthographic,
+        static const Rasterizer rasterizer{
+            .Projection = ctx.camera.type,
             .BilinearFiltering = true
         };
         rasterizer.Rasterize(batch, ctx, shader, item);

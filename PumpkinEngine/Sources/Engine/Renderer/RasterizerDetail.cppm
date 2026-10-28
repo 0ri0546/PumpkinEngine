@@ -155,20 +155,9 @@ export namespace Pumpkin::Detail {
     // The four neighbouring texels of 8 pixels, plus the fractional position between them.
     struct BilinearTaps { TexelSIMD t00, t10, t01, t11; V::type tx, ty; };
 
-    template <int Shift>
-    [[nodiscard]] inline V::type BilerpChannel(TexelSIMD t00, TexelSIMD t10, TexelSIMD t01, TexelSIMD t11,
-        V::type tx, V::type ty) {
-        const auto lerp = [](V::type a, V::type b, V::type t) {
-            return V::add(a, V::mul(V::sub(b, a), t));
-        };
-        const V::type top    = lerp(Channel<Shift>(t00), Channel<Shift>(t10), tx);
-        const V::type bottom = lerp(Channel<Shift>(t01), Channel<Shift>(t11), tx);
-        return lerp(top, bottom, ty);
-    }
+    struct BilinearCoords { TexelSIMD i00, i10, i01, i11; V::type tx, ty; };
 
-    // Repeat wrapping, 4 gathers. Shared by every bilinear sampler below.
-    [[nodiscard]] inline BilinearTaps GatherBilinear8(const std::uint32_t* texels, int width, int height,
-        V::type u, V::type v) {
+    [[nodiscard]] inline BilinearCoords MakeBilinearCoords(int width, int height, V::type u, V::type v) {
         u = V::sub(u, _mm256_floor_ps(u));
         v = V::sub(v, _mm256_floor_ps(v));
 
@@ -179,8 +168,6 @@ export namespace Pumpkin::Detail {
         const V::type fy = V::sub(V::mul(V::sub(V::set1(1.0f), v), V::set1(static_cast<float>(height))), half);
         const V::type flx = _mm256_floor_ps(fx);
         const V::type fly = _mm256_floor_ps(fy);
-        const V::type tx = V::sub(fx, flx);
-        const V::type ty = V::sub(fy, fly);
 
         const TexelSIMD zero = _mm256_setzero_si256();
         const TexelSIMD one = _mm256_set1_epi32(1);
@@ -203,36 +190,79 @@ export namespace Pumpkin::Detail {
         const TexelSIMD row0 = _mm256_mullo_epi32(y0, stride);
         const TexelSIMD row1 = _mm256_mullo_epi32(y1, stride);
 
-        // The four nearest texels, see:
-        // https://github.com/rodrigogq/3d-cpu-engine/tree/main/chapter-12-clipping-filtering#128--bilinear-filtering
+        return {
+            _mm256_add_epi32(row0, x0), // (x0, y0)
+            _mm256_add_epi32(row0, x1), // (x1, y0)
+            _mm256_add_epi32(row1, x0), // (x0, y1)
+            _mm256_add_epi32(row1, x1), // (x1, y1)
+            V::sub(fx, flx), V::sub(fy, fly)
+        };
+    }
+
+    // Only the four gathers. Several textures with the same size can share one BilinearCoords.
+    [[nodiscard]] inline BilinearTaps GatherTaps(const std::uint32_t* texels, const BilinearCoords& c) {
         const int* base = reinterpret_cast<const int*>(texels);
         return {
-            _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x0), 4), // t00
-            _mm256_i32gather_epi32(base, _mm256_add_epi32(row0, x1), 4), // t01
-            _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x0), 4), // t10
-            _mm256_i32gather_epi32(base, _mm256_add_epi32(row1, x1), 4), // t11
-            tx, ty
+            _mm256_i32gather_epi32(base, c.i00, 4),
+            _mm256_i32gather_epi32(base, c.i10, 4),
+            _mm256_i32gather_epi32(base, c.i01, 4),
+            _mm256_i32gather_epi32(base, c.i11, 4),
+            c.tx, c.ty
         };
     }
 
-    // Bilinear, all four channels (albedo, normal map).
-    [[nodiscard]] inline Texel8 SampleTexture8Bilinear(const std::uint32_t* texels, int width, int height,
+    [[nodiscard]] inline BilinearTaps GatherBilinear8(const std::uint32_t* texels, int width, int height,
         V::type u, V::type v) {
-        const BilinearTaps k = GatherBilinear8(texels, width, height, u, v);
+        return GatherTaps(texels, MakeBilinearCoords(width, height, u, v));
+    }
+
+    // Fixed-point bilinear on the packed bytes.
+    // Two channels share one 32-bit lane (16 bits each), weights are 0..256 and sum to exactly 256,
+    // so a byte times a weight never overflows 16 bits. Result: 0..255 floats like the float path,
+    // but fractions are quantised to 1/256 and the output is truncated to an integer.
+    [[nodiscard]] inline Texel8 BilerpAllChannelsFixed(const BilinearTaps& k) {
+        const __m256i mask = _mm256_set1_epi32(0x00FF00FF);
+        const __m256i c256 = _mm256_set1_epi32(256);
+
+        const __m256i fx = _mm256_cvttps_epi32(V::mul(k.tx, V::set1(256.0f))); // 0..255
+        const __m256i fy = _mm256_cvttps_epi32(V::mul(k.ty, V::set1(256.0f)));
+        const __m256i ix = _mm256_sub_epi32(c256, fx);
+        const __m256i iy = _mm256_sub_epi32(c256, fy);
+
+        const __m256i w00 = _mm256_srli_epi32(_mm256_mullo_epi32(ix, iy), 8);
+        const __m256i w10 = _mm256_srli_epi32(_mm256_mullo_epi32(fx, iy), 8);
+        const __m256i w01 = _mm256_srli_epi32(_mm256_mullo_epi32(ix, fy), 8);
+        const __m256i w11 = _mm256_sub_epi32(_mm256_sub_epi32(_mm256_sub_epi32(c256, w00), w10), w01);
+
+        // Put the weight in both 16-bit halves of each lane.
+        const auto dup = [](__m256i w) { return _mm256_or_si256(w, _mm256_slli_epi32(w, 16)); };
+        const __m256i d00 = dup(w00), d10 = dup(w10), d01 = dup(w01), d11 = dup(w11);
+
+        // lo holds the bytes at shifts 0 (low half) and 16 (high half);
+        // hi holds the bytes at shifts 8 (low half) and 24 (high half).
+        const auto accumulate = [&](__m256i t, __m256i w, __m256i& lo, __m256i& hi, bool first) {
+            const __m256i l = _mm256_mullo_epi16(_mm256_and_si256(t, mask), w);
+            const __m256i h = _mm256_mullo_epi16(_mm256_and_si256(_mm256_srli_epi32(t, 8), mask), w);
+            lo = first ? l : _mm256_add_epi16(lo, l);
+            hi = first ? h : _mm256_add_epi16(hi, h);
+        };
+
+        __m256i lo, hi;
+        accumulate(k.t00, d00, lo, hi, true);
+        accumulate(k.t10, d10, lo, hi, false);
+        accumulate(k.t01, d01, lo, hi, false);
+        accumulate(k.t11, d11, lo, hi, false);
+
+        lo = _mm256_srli_epi16(lo, 8);
+        hi = _mm256_srli_epi16(hi, 8);
+
+        const __m256i low16 = _mm256_set1_epi32(0xFFFF);
         return {
-            BilerpChannel<24>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
-            BilerpChannel<16>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
-            BilerpChannel<8>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty),
-            BilerpChannel<0>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty)
+            _mm256_cvtepi32_ps(_mm256_srli_epi32(hi, 16)),    // shift 24
+            _mm256_cvtepi32_ps(_mm256_srli_epi32(lo, 16)),    // shift 16
+            _mm256_cvtepi32_ps(_mm256_and_si256(hi, low16)),  // shift 8
+            _mm256_cvtepi32_ps(_mm256_and_si256(lo, low16))   // shift 0
         };
-    }
-
-    // Bilinear, one channel only (metallic, roughness, AO): skips the work for the other three.
-    template <int Shift>
-    [[nodiscard]] inline V::type SampleTexture8BilinearChannel(const std::uint32_t* texels, int width, int height,
-        V::type u, V::type v) {
-        const BilinearTaps k = GatherBilinear8(texels, width, height, u, v);
-        return BilerpChannel<Shift>(k.t00, k.t10, k.t01, k.t11, k.tx, k.ty);
     }
 
     // Scalar versions, same maths, for the 0..7 pixel tail.

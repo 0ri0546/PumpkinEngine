@@ -85,6 +85,18 @@ namespace Pumpkin {
         const bool hasNormal = item.material->normal && item.material->normal->width > 0 && item.material->normal->height > 0 && !item.material->normal->pixels.empty();
 		const bool hasORM = item.material->orm && item.material->orm->width > 0 && item.material->orm->height > 0 && !item.material->orm->pixels.empty();
 
+        int refW = 0, refH = 0;
+        // optimization: if they share the same size, then they share the same uvs / bilinear coordinates
+        bool sameSize = true;
+        const auto track = [&](bool has, const auto& tex) {
+            if (!has) return;
+            if (refW == 0) { refW = tex->width; refH = tex->height; }
+            else if (tex->width != refW || tex->height != refH) sameSize = false;
+        };
+        track(hasAlbedo, item.material->albedo);
+        track(hasNormal, item.material->normal);
+        track(hasORM, item.material->orm);
+
         for (int y = ya; y < yb; ++y) {
             const auto row = static_cast<float>(y - t.y0);
 
@@ -149,28 +161,20 @@ namespace Pumpkin {
                         const V::type tu = V::mul(vu, inv), tv = V::mul(vv, inv);
                         const V::type two = V::set1(2.0f), one1 = V::set1(1.0f);
 
+                        BilinearCoords shared{};
+                        if (BilinearFiltering && sameSize && refW > 0)
+                            shared = MakeBilinearCoords(refW, refH, tu, tv);
+
                         auto chan = [&]<int C>(const TexelSIMD & t) { return V::mul(Channel<C>(t), inv255); };
 
-                        // One channel (ORM : Occlusion Roughness Metallic) of a map, 0..1 range.
-                        const auto sampleR = [&](const Texture& tex) {
-                            if (BilinearFiltering)
-                                return V::mul(SampleTexture8BilinearChannel<24>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
-                            return chan.template operator()<24>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
-                        };
-                        const auto sampleG = [&](const Texture& tex) {
-                            if (BilinearFiltering)
-                                return V::mul(SampleTexture8BilinearChannel<16>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
-                            return chan.template operator()<16>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
-                        };
-                        const auto sampleB = [&](const Texture& tex) {
-                            if (BilinearFiltering)
-                                return V::mul(SampleTexture8BilinearChannel<8>(tex.pixels.data(), tex.width, tex.height, tu, tv), inv255);
-                            return chan.template operator()<8>(SampleTexture8(tex.pixels.data(), tex.width, tex.height, tu, tv));
-                        };
-
                         if (hasAlbedo) {
+                            const Texture& albedo = *item.material->albedo;
+                            const auto* albedoPx = albedo.pixels.data();
                             if (BilinearFiltering) {
-                                const Texel8 bl = SampleTexture8Bilinear(item.material->albedo->pixels.data(), item.material->albedo->width, item.material->albedo->height, tu, tv);
+                                const BilinearTaps k = sameSize
+                                    ? GatherTaps(albedoPx, shared)
+                                    : GatherBilinear8(albedoPx, albedo.width, albedo.height, tu, tv);
+                                const Texel8 bl = BilerpAllChannelsFixed(k);
                                 const V::type r = V::mul(bl.r, inv255);
                                 const V::type g = V::mul(bl.g, inv255);
                                 const V::type b = V::mul(bl.b, inv255);
@@ -180,7 +184,7 @@ namespace Pumpkin {
                                 V::store(aA, V::mul(bl.a, inv255)); // alpha stays linear
                             }
                             else {
-                                const TexelSIMD t = SampleTexture8(item.material->albedo->pixels.data(), item.material->albedo->width, item.material->albedo->height, tu, tv);
+                                const TexelSIMD t = SampleTexture8(albedoPx, albedo.width, albedo.height, tu, tv);
                                 const V::type r = chan.template operator()<24>(t);
                                 const V::type g = chan.template operator()<16>(t);
                                 const V::type b = chan.template operator()<8>(t);
@@ -191,8 +195,13 @@ namespace Pumpkin {
                             }
                         }
                         if (hasNormal) {
+                            const Texture& normal = *item.material->normal;
+                            const auto* normalPx = normal.pixels.data();
                             if (BilinearFiltering) {
-                                const Texel8 bl = SampleTexture8Bilinear(item.material->normal->pixels.data(), item.material->normal->width, item.material->normal->height, tu, tv);
+                                const BilinearTaps k = sameSize
+                                    ? GatherTaps(normalPx, shared)
+                                    : GatherBilinear8(normalPx, normal.width, normal.height, tu, tv);
+                                const Texel8 bl = BilerpAllChannelsFixed(k);
                                 const V::type nx = V::sub(V::mul(V::mul(bl.r, inv255), two), one1);
                                 const V::type ny = V::sub(V::mul(V::mul(bl.g, inv255), two), one1);
                                 const V::type nz = V::sub(V::mul(V::mul(bl.b, inv255), two), one1);
@@ -204,16 +213,30 @@ namespace Pumpkin {
                                 V::store(nZ, V::mul(nz, invLen));
                             }
                             else {
-                                const TexelSIMD t = SampleTexture8(item.material->normal->pixels.data(), item.material->normal->width, item.material->normal->height, tu, tv);
+                                const TexelSIMD t = SampleTexture8(normalPx, normal.width, normal.height, tu, tv);
                                 V::store(nX, V::sub(V::mul(chan.template operator()<24>(t), two), one1));
                                 V::store(nY, V::sub(V::mul(chan.template operator()<16>(t), two), one1));
                                 V::store(nZ, V::sub(V::mul(chan.template operator()<8>(t), two), one1));
                             }
                         }
                         if (hasORM) {
-                            V::store(ao, sampleR(*item.material->orm));
-                            V::store(rg, sampleG(*item.material->orm));
-                            V::store(mt, sampleB(*item.material->orm));
+                            const Texture& orm = *item.material->orm;
+                            const auto* ormPixels = orm.pixels.data();
+                            if (BilinearFiltering) {
+                                const BilinearTaps k = sameSize
+                                    ? GatherTaps(ormPixels, shared)
+                                    : GatherBilinear8(ormPixels, orm.width, orm.height, tu, tv);
+                                const Texel8 bl = BilerpAllChannelsFixed(k);
+                                V::store(ao, V::mul(bl.r, inv255));
+                                V::store(rg, V::mul(bl.g, inv255));
+                                V::store(mt, V::mul(bl.b, inv255));
+                            }
+                            else {
+                                const TexelSIMD t = SampleTexture8(ormPixels, orm.width, orm.height, tu, tv);
+                                V::store(ao, chan.template operator()<24>(t));
+                                V::store(rg, chan.template operator()<16>(t));
+                                V::store(mt, chan.template operator()<8>(t));
+                            }
                         }
 
                         // The shader is scalar: call it for the lanes that passed.
