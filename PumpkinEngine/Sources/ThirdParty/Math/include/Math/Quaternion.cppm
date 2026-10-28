@@ -78,6 +78,8 @@ export {
         inline constexpr Quaternion operator+() const;
         inline constexpr Quaternion operator-() const;
 
+        inline constexpr T operator[](const size_type index) const;
+
         inline constexpr T LengthSquared() const;
         inline constexpr T Length() const;
 
