@@ -53,7 +53,7 @@ namespace {
             .noiseOctaves = 4,
             .persistence = 0.5f,
             .lacunarity = 2.0f,
-            .seed = 41,
+            .seed = 10,
             .waterLevel = 0.20f,
             .sandLevel = 0.35f,
             .grassLevel = 0.35f,
@@ -194,7 +194,7 @@ int main() {
 
     Material terrainMaterial{
         .baseColor = { 255, 255, 255, 255 },
-        .shader = ShaderId::PBR
+        .shader = ShaderId::Lambert
     };
     Material waterMaterial{
         .baseColor = { 255, 255, 255, 255 },
