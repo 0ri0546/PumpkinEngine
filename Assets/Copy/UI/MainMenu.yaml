@@ -1,5 +1,5 @@
 canvas:
-  name: MainMenu
+  name: MainHUD
   referenceResolution: { width: 1920, height: 1080 }
   scaleMode: fit
 
@@ -8,23 +8,149 @@ textures:
     path: assets/ui/logo.png
 
 fonts:
-  - id: body_font
+  - id: arial
     path: assets/fonts/Arial.ttf
-    size: 24
+    size: 16
 
 elements:
+
   - type: Image
-    id: test_image
+    id: hud_logo
     texture: logo
-    anchor: center
-    position: { x: 0, y: -100 }
-    size: { width: 256, height: 128 }
-    color: [255, 255, 255, 255]
+    anchor: top-center
+    position: { x: 0, y: 0 }
+    size: { width: 160, height: 80 }
+
+  # Nom de la région
+  - type: Text
+    id: region_name
+    text: "KINGDOMS OF ETERNITY"
+    font: arial
+    color: [235, 215, 175, 255]
+    anchor: top-center
+    position: { x: 300, y: 35 }
 
   - type: Text
-    id: test_text
-    text: "Hello World"
-    font: body_font
-    color: [255, 255, 255, 255]
-    anchor: center
-    position: { x: 0, y: 100 }
+    id: season
+    text: "AUTUMN  |  YEAR 1"
+    font: arial
+    color: [205, 195, 170, 255]
+    anchor: top-center
+    position: { x: 300, y: 75 }
+
+  # Ressources : haut gauche
+  - type: Text
+    id: resources_title
+    text: "RESOURCES"
+    font: arial
+    color: [235, 215, 175, 255]
+    anchor: top-left
+    position: { x: 30, y: 35 }
+
+  - type: Text
+    id: resource_wood
+    text: "WOOD       125"
+    font: arial
+    color: [225, 220, 205, 255]
+    anchor: top-left
+    position: { x: 30, y: 75 }
+
+  - type: Text
+    id: resource_stone
+    text: "STONE        68"
+    font: arial
+    color: [225, 220, 205, 255]
+    anchor: top-left
+    position: { x: 30, y: 110 }
+
+  - type: Text
+    id: resource_food
+    text: "FOOD         240"
+    font: arial
+    color: [225, 220, 205, 255]
+    anchor: top-left
+    position: { x: 30, y: 145 }
+
+  - type: Text
+    id: resource_gold
+    text: "TREASURY    520"
+    font: arial
+    color: [235, 205, 125, 255]
+    anchor: top-left
+    position: { x: 30, y: 180 }
+
+  # Population : haut droite
+  - type: Text
+    id: population_title
+    text: "SETTLEMENT"
+    font: arial
+    color: [235, 215, 175, 255]
+    anchor: top-right
+    position: { x: -30, y: 35 }
+
+  - type: Text
+    id: population
+    text: "POPULATION   86"
+    font: arial
+    color: [225, 220, 205, 255]
+    anchor: top-right
+    position: { x: -30, y: 75 }
+
+  - type: Text
+    id: happiness
+    text: "APPROVAL       78%"
+    font: arial
+    color: [180, 215, 165, 255]
+    anchor: top-right
+    position: { x: -30, y: 110 }
+
+  - type: Text
+    id: provisions
+    text: "PROVISIONS   12 MONTHS"
+    font: arial
+    color: [225, 220, 205, 255]
+    anchor: top-right
+    position: { x: -30, y: 145 }
+
+  # Objectif courant : bas gauche
+  - type: Text
+    id: objective_title
+    text: "CURRENT OBJECTIVE"
+    font: arial
+    color: [235, 215, 175, 255]
+    anchor: bottom-left
+    position: { x: 30, y: -115 }
+
+  - type: Text
+    id: objective
+    text: "BUILD A WOODCUTTER'S CAMP"
+    font: arial
+    color: [225, 220, 205, 255]
+    anchor: bottom-left
+    position: { x: 30, y: -75 }
+
+  # Commandes : bas centre
+  - type: Text
+    id: controls
+    text: "[ B ] BUILD     [ M ] MAP     [ T ] TOWN"
+    font: arial
+    color: [215, 205, 180, 255]
+    anchor: bottom-center
+    position: { x: 0, y: -35 }
+
+  # Indication de vitesse : bas droite
+  - type: Text
+    id: game_speed
+    text: "II  PAUSED"
+    font: arial
+    color: [235, 215, 175, 255]
+    anchor: bottom-right
+    position: { x: -30, y: -75 }
+
+  - type: Text
+    id: engine_credit
+    text: "PUMPKIN ENGINE"
+    font: arial
+    color: [140, 135, 125, 255]
+    anchor: bottom-right
+    position: { x: -30, y: -35 }

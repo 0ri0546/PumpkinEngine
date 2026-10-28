@@ -1,4 +1,6 @@
+module;
 
+#include <SDL_FixedIncludes.h>
 export module Pumpkin.Renderer.Passes.Image;
 
 import Pumpkin.Renderer.RenderPass;
@@ -100,39 +102,38 @@ export namespace Pumpkin
                     if (srcA <= 0.0f)
                         continue;
 
-                    std::uint32_t& dst =
-                        fb.pixels[static_cast<std::size_t>(y) * fb.width + x];
+                    std::uint32_t& dst = fb.pixels[static_cast<std::size_t>(y) * fb.width + x];
 
-                    const float dstR = ((dst >> 24) & 0xFF) / 255.0f;
-                    const float dstG = ((dst >> 16) & 0xFF) / 255.0f;
-                    const float dstB = ((dst >> 8) & 0xFF) / 255.0f;
-                    const float dstA = (dst & 0xFF) / 255.0f;
+                    const SDL_PixelFormatDetails* dstFormat =
+                        SDL_GetPixelFormatDetails(SDL_PIXELFORMAT_ABGR8888);
 
-                    const float outA = srcA + dstA * (1.0f - srcA);
+                    Uint8 dr, dg, db, da;
+                    SDL_GetRGBA(dst, dstFormat, nullptr, &dr, &dg, &db, &da);
 
-                    float outR = 0.0f;
-                    float outG = 0.0f;
-                    float outB = 0.0f;
+                    const float alpha = srcA;
+                    const float invAlpha = 1.0f - alpha;
 
-                    if (outA > 0.0f)
-                    {
-                        outR = (srcR * srcA + dstR * dstA * (1.0f - srcA)) / outA;
-                        outG = (srcG * srcA + dstG * dstA * (1.0f - srcA)) / outA;
-                        outB = (srcB * srcA + dstB * dstA * (1.0f - srcA)) / outA;
-                    }
+                    const auto outR = static_cast<Uint8>(
+                        srcR * 255.0f * alpha + dr * invAlpha
+                    );
+                    const auto outG = static_cast<Uint8>(
+                        srcG * 255.0f * alpha + dg * invAlpha
+                    );
+                    const auto outB = static_cast<Uint8>(
+                        srcB * 255.0f * alpha + db * invAlpha
+                    );
+                    const auto outA = static_cast<Uint8>(
+                        alpha * 255.0f + da * invAlpha
+                    );
 
-                    const auto toByte = [](float value)
-                    {
-                        return static_cast<std::uint32_t>(
-                            std::clamp(value, 0.0f, 1.0f) * 255.0f + 0.5f
-                        );
-                    };
-
-                    dst =
-                        (toByte(outR) << 24) |
-                        (toByte(outG) << 16) |
-                        (toByte(outB) << 8) |
-                        toByte(outA);
+                    dst = SDL_MapRGBA(
+                        dstFormat,
+                        nullptr,
+                        outB,
+                        outG,
+                        outR,
+                        outA
+                    );
                 }
             }
         }
