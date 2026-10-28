@@ -1,10 +1,14 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Particles;
 
 import Pumpkin.Math.Vec;
 
 export namespace Pumpkin {
 
-    struct Particles {
+    struct PUMPKIN_API Particles {
         Vec3f pos{ 0.0f, 0.0f, 0.0f };
         Vec3f dir{ 0.0f, 1.0f, 0.0f };
         Vec3f gravity{ 0.0f, -9.81f, 0.0f };

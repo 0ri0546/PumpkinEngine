@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.MeshLoader;
 
 import std;
@@ -9,15 +13,15 @@ export namespace Pumpkin {
     // The mesh is centered on the origin and scaled to fit a 2-unit box, every
     // vertex gets `color`, and smooth normals are regenerated from the triangles.
     // With deduplicate, vertices sharing position / uv / normal are merged.
-    [[nodiscard]] Mesh LoadMesh(
+    [[nodiscard]] Mesh PUMPKIN_API LoadMesh(
         const std::filesystem::path& filepath,
         Color color = Color{ .r = 255, .g = 255, .b = 255, .a = 255 },
         bool deduplicate = true
     );
 
     // Replaces the vertex normals with area-weighted smooth normals.
-    void GenerateNormals(Mesh& mesh);
+    void PUMPKIN_API GenerateNormals(Mesh& mesh);
 
     // One RGB triangle in clip-friendly coordinates, handy to debug the pipeline.
-    [[nodiscard]] Mesh MakeTestTriangle();
+    [[nodiscard]] Mesh PUMPKIN_API MakeTestTriangle();
 }

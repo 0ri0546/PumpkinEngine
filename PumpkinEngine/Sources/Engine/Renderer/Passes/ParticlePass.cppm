@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Passes.Particle;
 
 import Pumpkin.Renderer.RenderPass;
@@ -7,7 +11,7 @@ import std;
 
 export namespace Pumpkin
 {
-    class ParticlePass final : public RenderPass
+    class PUMPKIN_API ParticlePass final : public RenderPass
     {
     public:
         template<typename... Parts>

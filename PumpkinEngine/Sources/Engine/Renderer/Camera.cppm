@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Camera;
 
 import Pumpkin.Renderer.Types;
@@ -9,7 +13,7 @@ import std;
 
 export namespace Pumpkin {
 
-    struct Camera {
+    struct PUMPKIN_API Camera {
         Vec3f pos{ 0.0f, 7.0f, 4.0f };
         Vec3f front{ 0.0f, 0.0f, -1.0f };
         Vec3f up{ 0.0f, 1.0f, 0.0f };

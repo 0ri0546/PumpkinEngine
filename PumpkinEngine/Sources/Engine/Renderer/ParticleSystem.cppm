@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.ParticleSystem;
 
 import std;
@@ -8,7 +12,7 @@ import Pumpkin.Renderer.Particles;
 
 export namespace Pumpkin {
 
-    class ParticleSystem {
+    class PUMPKIN_API ParticleSystem {
     public:
         explicit ParticleSystem(Particles settings)
             : m_settings(settings) {

@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Passes.Skybox;
 
 import std;
@@ -7,7 +11,7 @@ import Pumpkin.Renderer.Texture;
 import Pumpkin.Renderer.Types;
 
 export namespace Pumpkin {
-    class SkyboxPass final : public RenderPass {
+    class PUMPKIN_API SkyboxPass final : public RenderPass {
     public:
         explicit SkyboxPass(const Texture& texture)
             : m_texture(texture) {
