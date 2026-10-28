@@ -37,6 +37,18 @@ export namespace Pumpkin {
         [[nodiscard]] float Interpolate(std::span<const T> attribute, Get&& get) const {
             return get(attribute[i0]) * b0 + get(attribute[i1]) * b1 + get(attribute[i2]) * b2;
         }
+
+        /// Normal map: tangent space -> world space. The default (0, 0, 1) leaves n unchanged.
+        /// n is the interpolated, normalized vertex normal.
+        [[nodiscard]] Vec3f ApplyNormalMap(const Vec3f& n) const {
+            if (nx == 0.0f && ny == 0.0f && nz == 1.0f)
+                return n;
+
+            const Vec3f t = (tangent - n * Dot(n, tangent)).Normalized();   // Gram-Schmidt
+            const Vec3f b = Cross(n, t) * tangentSign;
+            const Vec3f m = Vec3f{ nx, ny, nz }.Normalized();               // renormalize after filtering
+            return (t * m[0] + b * m[1] + n * m[2]).Normalized();
+        }
     };
 
     /// @brief Shader output. Channels are in [0, 255].
@@ -63,6 +75,19 @@ export namespace Pumpkin {
         }
     };
 
+    /// @brief Vertex color * albedo texture, in the same 0..255 space as the vertex colors.
+    /// The rasterizer stores the texture in linear space (squared), so the square root brings it
+    /// back. Without a texture the albedo is 1 and the vertex color is returned unchanged.
+    [[nodiscard]] inline PixelOutput BaseColor(const FragmentInput& f, std::span<const Color> colors) {
+        const PixelOutput vc = VertexColorShader{ colors }(f);
+        return {
+            vc.r * std::sqrt(f.albedo[0]),
+            vc.g * std::sqrt(f.albedo[1]),
+            vc.b * std::sqrt(f.albedo[2]),
+            vc.a * f.albedo[3]                   // alpha stays linear
+        };
+    }
+
     struct LambertShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
@@ -76,13 +101,13 @@ export namespace Pumpkin {
         float shininess = 32.0f;
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            const Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f n = f.ApplyNormalMap(f.Interpolate(normals).Normalized());
 
             const Vec3f l = lightDir.Normalized();
             const float diff = std::max(0.0f, Dot(n, l));
-            const Vec3f lighting = lightCol * (ambient + diff);
+            const Vec3f lighting = lightCol * (ambient * f.ao + diff);   // AO only dims the ambient
 
-            const PixelOutput color = VertexColorShader{ colors }(f);
+            const PixelOutput color = BaseColor(f, colors);
 
             return {
                 std::clamp(lighting[0] * color.r, 0.0f, 255.0f),
@@ -105,7 +130,7 @@ export namespace Pumpkin {
         float shininess = 32.0f;
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            const Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f n = f.ApplyNormalMap(f.Interpolate(normals).Normalized());
             const Vec3f l = lightDir.Normalized();
 
             const float diff = std::max(0.0f, Dot(n, l));
@@ -119,15 +144,9 @@ export namespace Pumpkin {
             else if (diff > 0.15f)
                 intensity = 0.45f;
             else
-                intensity = ambient;
+                intensity = ambient * f.ao;   // darkest band is the ambient one
 
-            const PixelOutput color = VertexColorShader{ colors }(f);
-
-            const float albedo[3] = {
-                color.r * f.albedo[0],
-                color.g * f.albedo[1],
-                color.b * f.albedo[2]
-            };
+            const PixelOutput color = BaseColor(f, colors);
 
             const Vec3f v{ 0.0f, 0.0f, 1.0f };
             const Vec3f h = (l + v).Normalized();
@@ -139,10 +158,10 @@ export namespace Pumpkin {
                 : 0.0f;
 
             return {
-                std::clamp(albedo[0] * lightCol[0] * intensity + 255.0f * spec, 0.0f, 255.0f),
-                std::clamp(albedo[1] * lightCol[1] * intensity + 255.0f * spec, 0.0f, 255.0f),
-                std::clamp(albedo[2] * lightCol[2] * intensity + 255.0f * spec, 0.0f, 255.0f),
-                color.a * f.albedo[3]
+                std::clamp(color.r * lightCol[0] * intensity + 255.0f * spec, 0.0f, 255.0f),
+                std::clamp(color.g * lightCol[1] * intensity + 255.0f * spec, 0.0f, 255.0f),
+                std::clamp(color.b * lightCol[2] * intensity + 255.0f * spec, 0.0f, 255.0f),
+                color.a
             };
         }
     };
@@ -160,11 +179,11 @@ export namespace Pumpkin {
         float shininess = 32.0f;
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            const Vec3f n = f.Interpolate(normals).Normalized();
+            const Vec3f n = f.ApplyNormalMap(f.Interpolate(normals).Normalized());
             const Vec3f l = lightDir.Normalized();
             const Vec3f v = viewDir.Normalized();
 
-            const float ambientTerm = ambient;
+            const float ambientTerm = ambient * f.ao;   // AO only dims the ambient
             const float diff = std::max(0.0f, Dot(n, l));
             float spec = 0.0f;
 
@@ -174,7 +193,7 @@ export namespace Pumpkin {
                 spec = specularStrength * std::pow(specAngle, shininess);
             }
 
-            const PixelOutput color = VertexColorShader{ colors }(f);
+            const PixelOutput color = BaseColor(f, colors);
 
             const float diffuseLighting = ambientTerm + diff;
 
@@ -233,15 +252,7 @@ export namespace Pumpkin {
         float roughness = 0.3f;                      // 0 = mirror, 1 = fully rough
 
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
-            Vec3f n = f.Interpolate(normals).Normalized();
-
-            // Normal map: tangent -> world. The default (0,0,1) leaves n unchanged.
-            if (f.nx != 0.0f || f.ny != 0.0f || f.nz != 1.0f) {
-                const Vec3f t = (f.tangent - n * Dot(n, f.tangent)).Normalized();   // Gram-Schmidt
-                const Vec3f b = Cross(n, t) * f.tangentSign;
-                const Vec3f m = Vec3f{ f.nx, f.ny, f.nz }.Normalized();             // renormalize after filtering
-                n = (t * m[0] + b * m[1] + n * m[2]).Normalized();
-            }
+            const Vec3f n = f.ApplyNormalMap(f.Interpolate(normals).Normalized());
 
             const Vec3f l = lightDir, v = viewDir;
             const Vec3f h = (l + v).Normalized();
