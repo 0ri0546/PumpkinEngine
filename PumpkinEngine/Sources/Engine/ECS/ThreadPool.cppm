@@ -1,9 +1,13 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.ThreadPool;
 
 import std;
 
 export namespace Pumpkin::ECS {
-    class ThreadPool {
+    class PUMPKIN_API ThreadPool {
     public:
         using Task = std::function<void()>;
 

@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.SparseSet;
 
 import Pumpkin.ECS.Entity;
@@ -6,8 +10,14 @@ import std;
 
 export namespace Pumpkin::ECS {
     template <typename T>
-    class SparseSet {
+    class PUMPKIN_API SparseSet {
     public:
+        SparseSet() = default;
+        SparseSet(const SparseSet&) = delete;
+        SparseSet& operator=(const SparseSet&) = delete;
+        SparseSet(SparseSet&&) noexcept = default;
+        SparseSet& operator=(SparseSet&&) noexcept = default;
+
         template <typename... Args>
         T& Emplace(Entity entity, Args&&... args) {
             if (entity.index >= m_sparse.size()) [[unlikely]] {

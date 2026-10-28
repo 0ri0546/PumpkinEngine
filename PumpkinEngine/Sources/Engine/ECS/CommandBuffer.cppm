@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.CommandBuffer;
 
 import Pumpkin.ECS.Component;
@@ -10,7 +14,7 @@ export namespace Pumpkin::ECS {
     // Create/destroy entity & add/remove component cannot happen while
     // systems run in parallel
     // The scheduler applies the commands single-threaded after the frame
-    class CommandBuffer {
+    class PUMPKIN_API CommandBuffer {
         using Command = std::function<void(World&)>;
 
     public:

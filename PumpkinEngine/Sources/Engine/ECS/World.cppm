@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.World;
 
 import Pumpkin.ECS.Component;
@@ -7,7 +11,7 @@ import Pumpkin.ECS.Registry;
 import std;
 
 export namespace Pumpkin::ECS {
-    class World {
+    class PUMPKIN_API World {
     public:
         Entity CreateEntity();
         void DestroyEntity(Entity entity);

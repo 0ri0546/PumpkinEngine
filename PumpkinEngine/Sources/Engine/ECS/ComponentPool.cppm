@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.ComponentPool;
 
 import Pumpkin.ECS.Component;
@@ -7,7 +11,7 @@ import Pumpkin.ECS.SparseSet;
 import std;
 
 export namespace Pumpkin::ECS {
-    class IComponentPool {
+    class PUMPKIN_API IComponentPool {
     public:
         virtual ~IComponentPool() = default;
 
@@ -19,7 +23,7 @@ export namespace Pumpkin::ECS {
     };
 
     template <Component T>
-    class ComponentPool final : public IComponentPool {
+    class PUMPKIN_API ComponentPool final : public IComponentPool {
     public:
         template <typename... Args>
         T& Emplace(Entity entity, Args&&... args) {
