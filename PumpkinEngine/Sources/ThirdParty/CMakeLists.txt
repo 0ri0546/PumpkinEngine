@@ -7,7 +7,7 @@ add_subdirectory(STB)
 if (MSVC)
     set(PUMPKIN_SIMD_FLAGS /arch:AVX2)
 else()
-    set(PUMPKIN_SIMD_FLAGS -mavx2)
+    set(PUMPKIN_SIMD_FLAGS -mavx2 -mfma)
 endif()
 
 target_compile_options(MathLib PUBLIC ${PUMPKIN_SIMD_FLAGS})
