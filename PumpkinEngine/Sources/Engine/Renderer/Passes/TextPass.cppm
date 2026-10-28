@@ -6,18 +6,33 @@ export module Pumpkin.Renderer.Passes.Text;
 
 import Pumpkin.Renderer.RenderPass;
 import Pumpkin.Renderer.Types;
-
 import std;
 
 export namespace Pumpkin {
     class PUMPKIN_API TextPass final : public RenderPass {
     public:
-        explicit TextPass(Text& text) : m_text(text) {}
-        [[nodiscard]] std::string_view Name() const override { return "Text"; }
-        void Execute(RenderContext& ctx) override { DrawText(ctx.fb, m_text); }
+        explicit TextPass(std::span<Text> texts)
+            : m_texts(texts)
+        {
+        }
+
+        [[nodiscard]]
+        std::string_view Name() const override
+        {
+            return "Text";
+        }
+
+        void Execute(RenderContext& ctx) override
+        {
+            for (const Text& text : m_texts)
+            {
+                DrawText(ctx.fb, text);
+            }
+        }
+
     private:
         void DrawText(const FrameBuffer&, const Text&);
 
-        Text& m_text;
+        std::span<Text> m_texts;
     };
 }

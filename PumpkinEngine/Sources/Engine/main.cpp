@@ -11,6 +11,7 @@ import Pumpkin.Renderer.Passes.Geometry;
 import Pumpkin.Renderer.Passes.Particle;
 import Pumpkin.Renderer.Passes.Skybox;
 import Pumpkin.Renderer.Passes.Text;
+import Pumpkin.Renderer.Passes.Image;
 import Pumpkin.Renderer.Renderer;
 import Pumpkin.Renderer.RenderPass;
 import Pumpkin.Renderer.TerrainBatcher;
@@ -20,6 +21,10 @@ import Pumpkin.Utils.Events;
 import Pumpkin.Utils.RenderProfiler;
 import Pumpkin.Utils.Utils;
 import Pumpkin.Utils.Window;
+import Pumpkin.UI.YAML;
+import Pumpkin.UI.Canvas;
+import Pumpkin.UI.Loader;
+import Pumpkin.UI.Systems.Render;
 
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Quaternion;
@@ -40,8 +45,8 @@ namespace {
 
     TerrainConfig MakeTerrainConfig() {
         return TerrainConfig{
-            .cellsX = 256,
-            .cellsZ = 256,
+            .cellsX = 128,
+            .cellsZ = 128,
             .sizeX = 50.0f,
             .sizeZ = 50.0f,
             .minHeight = -2.0f,
@@ -51,7 +56,7 @@ namespace {
             .noiseOctaves = 4,
             .persistence = 0.5f,
             .lacunarity = 2.0f,
-            .seed = 41,
+            .seed = 727,
             .waterLevel = 0.20f,
             .sandLevel = 0.35f,
             .grassLevel = 0.35f,
@@ -99,16 +104,8 @@ namespace {
 // ---------------------------------------------------------------------------
 
 int main() {
-    const auto fb = std::make_unique<FrameBuffer>();
-    const auto db = std::make_unique<DepthBuffer>();
-
-    std::uint64_t targetFps = kDefaultTargetFps;
-
-    Camera camera;
-
-    auto previousTime = std::chrono::steady_clock::now();
-
-    // SDL, renderer and window
+    // Pumpkin::UI::YAML::TestParser();
+    Pumpkin::UI::TestUILoader();
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
         std::println(stderr, "SDL could not initialize! SDL Error: {}", SDL_GetError());
@@ -121,73 +118,96 @@ int main() {
         return 1;
     }
 
-    Renderer renderer{};
     {
-        SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
-        const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
-        ResizeBuffers(renderer, *fb, *db, mode->w / 2, mode->h / 2);
-        camera.aspectRatio = static_cast<float>(fb->width) / static_cast<float>(fb->height);
-        if (mode->refresh_rate != 0.0f) {
-            targetFps = kUncappedFps;//static_cast<std::uint64_t>(mode->refresh_rate);
+        const auto fb = std::make_unique<FrameBuffer>();
+        const auto db = std::make_unique<DepthBuffer>();
+
+        std::uint64_t targetFps = kDefaultTargetFps;
+        Camera camera;
+        auto previousTime = std::chrono::steady_clock::now();
+
+        // Window and renderer
+        Renderer renderer{};
+
+        {
+            SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
+            const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
+
+            ResizeBuffers(renderer, *fb, *db, mode->w / 2, mode->h / 2);
+            camera.aspectRatio =
+                static_cast<float>(fb->width) / static_cast<float>(fb->height);
+
+            if (mode->refresh_rate != 0.0f) {
+                targetFps = kUncappedFps;
+            }
+
+            SDL_free(ids);
         }
-        SDL_free(ids);
-    }
 
-    constexpr SDL_WindowFlags windowFlags = SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
-    SDL_Window* window = SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, windowFlags);
-    if (!window) {
-        std::println("Could not create window! SDL Error: {}", SDL_GetError());
-        SDL_Quit();
-        return 1;
-    }
-    SetMultiResWindowIcon(window);
+        constexpr SDL_WindowFlags windowFlags =
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
 
-    SDL_Surface* surface = SDL_GetWindowSurface(window);
-    surface->format = SDL_PIXELFORMAT_RGBA32;
+        SDL_Window* window =
+            SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, windowFlags);
 
-    // Meshes, textures and materials
+        if (!window) {
+            std::println(stderr, "Could not create window! SDL Error: {}", SDL_GetError());
+        } else {
+            SetMultiResWindowIcon(window);
 
-    constexpr Color white{ .r = 255, .g = 255, .b = 255, .a = 255 };
+            SDL_Surface* surface = SDL_GetWindowSurface(window);
+            surface->format = SDL_PIXELFORMAT_RGBA32;
 
-    Mesh cowObj    = LoadMesh("Assets/Models/Spot.obj", white);
-    Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", white);
+            // Meshes, textures and materials
+            constexpr Color white{ .r = 255, .g = 255, .b = 255, .a = 255 };
 
-    Mat4f cowModel    = Mat4f::Translate({ 0.0f, 7.0f, 0.0f });
-    Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 7.0f, -3.0f });
-    vkRoomModel.SetRotation(
-        Quaternionf{ -std::sin(std::numbers::pi_v<float> / 2.0f), 0.0f, 0.0f, 1.0f }.Normalized());
+            Mesh cowObj = LoadMesh("Assets/Models/Spot.obj", white);
+            Mesh vkRoomObj = LoadMesh("Assets/Models/VikingRoom.obj", white);
 
-    Texture cowAlbedo, vkRoomAlbedo, vkRoomNormal, vkRoomORM, skyboxTexture;
-    LoadTextureOrWarn(cowAlbedo,     "Assets/Textures/SpotTexture.png");
-    LoadTextureOrWarn(vkRoomAlbedo,  "Assets/Textures/VikingRoom/Albedo.png");
-    LoadTextureOrWarn(vkRoomNormal,  "Assets/Textures/VikingRoom/Normal.png");
-    LoadTextureOrWarn(vkRoomORM,     "Assets/Textures/VikingRoom/ORM.png");
-    LoadTextureOrWarn(skyboxTexture, "Assets/Textures/Skybox.png");
+            Mat4f cowModel = Mat4f::Translate({ 0.0f, 7.0f, 0.0f });
+            Mat4f vkRoomModel = Mat4f::Translate({ -3.0f, 7.0f, -3.0f });
 
-    Material cowMaterial{
-        .baseColor = white,
-        .metallic = 0.7f,
-        .roughness = 0.3f,
-        .ao = 0.5f,
-        .albedo = &cowAlbedo,
-        .shader = ShaderId::Toon
-    };
-    Material vkRoomMaterial{
-        .baseColor = white,
-        .albedo = &vkRoomAlbedo,
-        .normal = &vkRoomNormal,
-        .orm = &vkRoomORM,
-        .shader = ShaderId::PBR
-    };
+            vkRoomModel.SetRotation(
+                Quaternionf{
+                    -std::sin(std::numbers::pi_v<float> / 2.0f),
+                    0.0f,
+                    0.0f,
+                    1.0f
+                }.Normalized()
+            );
 
-    // Terrain and water
+            Texture cowAlbedo, vkRoomAlbedo, vkRoomNormal, vkRoomORM, skyboxTexture;
 
-    const TerrainConfig terrainConfig = MakeTerrainConfig();
-    TerrainBatcher terrain{ GenerateTerrainChunks(terrainConfig, 16) };
-    Mesh waterMesh = GenerateWater(terrainConfig);
+            LoadTextureOrWarn(cowAlbedo, "Assets/Textures/SpotTexture.png");
+            LoadTextureOrWarn(vkRoomAlbedo, "Assets/Textures/VikingRoom/Albedo.png");
+            LoadTextureOrWarn(vkRoomNormal, "Assets/Textures/VikingRoom/Normal.png");
+            LoadTextureOrWarn(vkRoomORM, "Assets/Textures/VikingRoom/ORM.png");
+            LoadTextureOrWarn(skyboxTexture, "Assets/Textures/Skybox.png");
 
-    Mat4f terrainModel = Mat4f::Identity();
-    Mat4f waterModel   = Mat4f::Identity();
+            Material cowMaterial{
+                .baseColor = white,
+                .metallic = 0.7f,
+                .roughness = 0.3f,
+                .ao = 0.5f,
+                .albedo = &cowAlbedo,
+                .shader = ShaderId::Toon
+            };
+
+            Material vkRoomMaterial{
+                .baseColor = white,
+                .albedo = &vkRoomAlbedo,
+                .normal = &vkRoomNormal,
+                .orm = &vkRoomORM,
+                .shader = ShaderId::PBR
+            };
+
+            // Terrain and water
+            const TerrainConfig terrainConfig = MakeTerrainConfig();
+            TerrainBatcher terrain{ GenerateTerrainChunks(terrainConfig, 16) };
+            Mesh waterMesh = GenerateWater(terrainConfig);
+
+            Mat4f terrainModel = Mat4f::Identity();
+            Mat4f waterModel = Mat4f::Identity();
 
     Material terrainMaterial{
         .shader = ShaderId::Lambert
@@ -196,121 +216,190 @@ int main() {
         .shader = ShaderId::VertexColor
     };
 
-    // Text and particles
+            // Particles
+            auto particleSystem =
+                std::make_shared<ParticleSystem>(MakeSnowParticles());
 
-    constexpr float fontSize = 14.0f;
-    TTF_Font* font = TTF_OpenFont("Assets/Fonts/Arial.ttf", fontSize);
-    if (font == nullptr) {
-        SDL_Log("Couldn't load %g pt font from %s: %s",
-            fontSize, "Assets/Fonts/Arial.ttf", SDL_GetError());
-    } else {
-        std::println("It works bebou");
-    }
+            auto particleSystem2 =
+                std::make_shared<ParticleSystem>(MakeFountainParticles());
 
-    Text text(font, "hello world bebou", 50.0f, SDL_Color{ 255, 0, 0, 255 }, 20, 20);
+            // UI
+            std::ifstream uiFile("Assets/UI/MainMenu.yaml");
 
-    auto particleSystem  = std::make_shared<ParticleSystem>(MakeSnowParticles());
-    auto particleSystem2 = std::make_shared<ParticleSystem>(MakeFountainParticles());
 
-    // Render passes and scene
-
-    renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
-    renderer.AddPass<SkyboxPass>(skyboxTexture);
-    renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
-    renderer.AddPass<GeometryPass>();
-    renderer.AddPass<OutlinePass>(0.03f);
-    renderer.AddPass<TextPass>(text);
-
-    std::array scene{
-        DrawItem{ .mesh = &waterMesh,          .model = &waterModel,   .material = &waterMaterial },
-        DrawItem{ .mesh = &terrain.Inside(),   .model = &terrainModel, .material = &terrainMaterial },
-        DrawItem{ .mesh = &terrain.Crossing(), .model = &terrainModel, .material = &terrainMaterial },
-        DrawItem{ .mesh = &cowObj,             .model = &cowModel,     .material = &cowMaterial },
-        DrawItem{ .mesh = &vkRoomObj,          .model = &vkRoomModel,  .material = &vkRoomMaterial },
-    };
-
-    // Main loop
-
-    const auto frameTime = std::chrono::nanoseconds(1'000'000'000 / targetFps);
-    auto nextFrame = std::chrono::steady_clock::now();
-
-    std::uint64_t lastFpsUpdate = SDL_GetTicks();
-    std::uint32_t frames = 0;
-    bool isRunning = true;
-
-    std::vector<std::uint8_t> toon(static_cast<std::size_t>(fb->width) * fb->height);
-
-    while (isRunning) {
-        nextFrame += frameTime;
-
-        SDL_Event event;
-        while (SDL_PollEvent(&event)) {
-            switch (event.type) {
-            case SDL_EVENT_QUIT:
-                isRunning = false;
-                break;
-
-            case SDL_EVENT_WINDOW_RESIZED:
-                SDL_UpdateWindowSurface(window);
-                surface = SDL_GetWindowSurface(window);
-                surface->format = SDL_PIXELFORMAT_RGBA32;
-                ResizeBuffers(renderer, *fb, *db, event.window.data1, event.window.data2);
-                camera.aspectRatio = static_cast<float>(fb->width) / static_cast<float>(fb->height);
-                toon.resize(static_cast<std::size_t>(fb->width) * fb->height);
-                break;
-
-            default:
-                break;
+            if (!uiFile) {
+                std::println(stderr, "Impossible d'ouvrir MainMenu.yaml");
+                SDL_DestroyWindow(window);
+                return 1;
             }
 
-            HandleCameraEvent(camera, event);
+            const std::string uiSource{
+                std::istreambuf_iterator<char>(uiFile),
+                std::istreambuf_iterator<char>()
+            };
+            std::cout << "YAML loaded:\n" << uiSource << '\n';
+            auto uiRoot = Pumpkin::UI::YAML::Parse(uiSource);
+            auto loadedUI = Pumpkin::UI::LoadUI(uiRoot);
+
+            // Declare UI before renderer passes are added.
+            Pumpkin::UI::UIRenderSystem uiRenderer(loadedUI);
+            uiRenderer.UpdateLayout(fb->width, fb->height);
+
+            // Render passes
+            renderer.AddPass<ClearPass>(ToRGBA(0, 0, 0, 0));
+            renderer.AddPass<SkyboxPass>(skyboxTexture);
+            renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
+            renderer.AddPass<GeometryPass>();
+            renderer.AddPass<OutlinePass>(0.03f);
+            renderer.AddPass<Pumpkin::ImagePass>(uiRenderer.Images());
+            renderer.AddPass<Pumpkin::TextPass>(uiRenderer.Texts());
+
+            std::array scene{
+                DrawItem{
+                    .mesh = &waterMesh,
+                    .model = &waterModel,
+                    .material = &waterMaterial
+                },
+                DrawItem{
+                    .mesh = &terrain.Inside(),
+                    .model = &terrainModel,
+                    .material = &terrainMaterial
+                },
+                DrawItem{
+                    .mesh = &terrain.Crossing(),
+                    .model = &terrainModel,
+                    .material = &terrainMaterial
+                },
+                DrawItem{
+                    .mesh = &cowObj,
+                    .model = &cowModel,
+                    .material = &cowMaterial
+                },
+                DrawItem{
+                    .mesh = &vkRoomObj,
+                    .model = &vkRoomModel,
+                    .material = &vkRoomMaterial
+                }
+            };
+
+            // Main loop
+            const auto frameTime =
+                std::chrono::nanoseconds(1'000'000'000 / targetFps);
+
+            auto nextFrame = std::chrono::steady_clock::now();
+            std::uint64_t lastFpsUpdate = SDL_GetTicks();
+            std::uint32_t frames = 0;
+            bool isRunning = true;
+
+            std::vector<std::uint8_t> toon(
+                static_cast<std::size_t>(fb->width) * fb->height
+            );
+
+            while (isRunning) {
+                nextFrame += frameTime;
+
+                SDL_Event event;
+
+                while (SDL_PollEvent(&event)) {
+                    switch (event.type) {
+                    case SDL_EVENT_QUIT:
+                        isRunning = false;
+                        break;
+
+                    case SDL_EVENT_WINDOW_RESIZED:
+                        SDL_UpdateWindowSurface(window);
+                        surface = SDL_GetWindowSurface(window);
+                        surface->format = SDL_PIXELFORMAT_RGBA32;
+
+                        ResizeBuffers(
+                            renderer, *fb, *db,
+                            event.window.data1, event.window.data2
+                        );
+
+                        uiRenderer.UpdateLayout(fb->width, fb->height);
+
+                        camera.aspectRatio =
+                            static_cast<float>(fb->width) /
+                            static_cast<float>(fb->height);
+
+                        toon.resize(
+                            static_cast<std::size_t>(fb->width) * fb->height
+                        );
+                        break;
+
+                    default:
+                        break;
+                    }
+
+                    HandleCameraEvent(camera, event);
+                }
+
+                if (WindowNotFocused(window)) {
+                    std::this_thread::sleep_until(nextFrame);
+                    continue;
+                }
+
+                const auto currentTime = std::chrono::steady_clock::now();
+                const std::chrono::duration<float> elapsedTime =
+                    currentTime - previousTime;
+
+                const float deltaTime = elapsedTime.count();
+                previousTime = currentTime;
+
+                UpdateCameraMovement(camera, deltaTime);
+
+                fb->pixels = static_cast<std::uint32_t*>(surface->pixels);
+
+                const float fovRadians =
+                    camera.FOVY * (std::numbers::pi_v<float> / 180.0f);
+
+                const Mat4f view = camera.getViewMatrix();
+
+                const Mat4f projection = Mat4f::Perspective(
+                    fovRadians,
+                    camera.aspectRatio,
+                    camera.nearFrame,
+                    camera.farFrame
+                );
+
+                const Mat4f viewModel = view * terrainModel;
+                terrain.Update(projection * viewModel);
+
+                RenderContext ctx{
+                    .fb = *fb,
+                    .db = *db,
+                    .camera = camera,
+                    .deltaTime = deltaTime,
+                    .scene = scene,
+                    .toonMask = toon
+                };
+
+                renderer.Render(ctx);
+                SDL_UpdateWindowSurface(window);
+
+                ++frames;
+                const std::uint64_t now = SDL_GetTicks();
+
+                if (now - lastFpsUpdate >= 1000) {
+                    SDL_SetWindowTitle(
+                        window,
+                        std::format("Pumpkin Engine | FPS: {}", frames).c_str()
+                    );
+
+                    frames = 0;
+                    lastFpsUpdate = now;
+                }
+
+                Prof::EndFrame();
+                std::this_thread::sleep_until(nextFrame);
+            }
+
+            // Destroy the window while SDL is still initialized.
+            SDL_DestroyWindow(window);
         }
+    } // Renderer, UI, fonts and scene objects are destroyed here.
 
-        if (WindowNotFocused(window)) {
-            std::this_thread::sleep_until(nextFrame);
-            continue;
-        }
-
-        const auto currentTime = std::chrono::steady_clock::now();
-        const std::chrono::duration<float> elapsedTime = currentTime - previousTime;
-        const float deltaTime = elapsedTime.count();
-        previousTime = currentTime;
-
-        UpdateCameraMovement(camera, deltaTime);
-
-        fb->pixels = static_cast<std::uint32_t*>(surface->pixels);
-
-        // Same matrices as VertexShader, so the chunk culling matches what is drawn.
-        const float fovRadians = camera.FOVY * (std::numbers::pi_v<float> / 180.0f);
-        const Mat4f view       = camera.getViewMatrix();
-        const Mat4f projection = Mat4f::Perspective(fovRadians, camera.aspectRatio, camera.nearFrame, camera.farFrame);
-        const Mat4f viewModel  = view * terrainModel;
-        terrain.Update(projection * viewModel);
-
-        RenderContext ctx{ .fb = *fb, .db = *db, .camera = camera, .deltaTime = deltaTime, .scene = scene, .toonMask = toon };
-        renderer.Render(ctx);
-
-        SDL_UpdateWindowSurface(window);
-
-        // FPS counter in the window title, refreshed once per second.
-        ++frames;
-        const std::uint64_t now = SDL_GetTicks();
-        if (now - lastFpsUpdate >= 1000) {
-            SDL_SetWindowTitle(window, std::format("Pumpkin Engine | FPS: {}", frames).c_str());
-            frames = 0;
-            lastFpsUpdate = now;
-        }
-
-        Prof::EndFrame();
-        std::this_thread::sleep_until(nextFrame);
-    }
-
-    // Shutdown
-
-    TTF_CloseFont(font);
     TTF_Quit();
-
-    SDL_DestroyWindow(window);
     SDL_Quit();
 
     return 0;
