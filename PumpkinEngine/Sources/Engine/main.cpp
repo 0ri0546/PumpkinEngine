@@ -190,11 +190,9 @@ int main() {
     Mat4f waterModel   = Mat4f::Identity();
 
     Material terrainMaterial{
-        .baseColor = { 255, 255, 255, 255 },
-        .shader = ShaderId::PBR
+        .shader = ShaderId::Lambert
     };
     Material waterMaterial{
-        .baseColor = { 255, 255, 255, 255 },
         .shader = ShaderId::VertexColor
     };
 
