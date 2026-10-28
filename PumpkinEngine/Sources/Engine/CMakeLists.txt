@@ -1,4 +1,5 @@
-add_executable(PumpkinEngine main.cpp)
+add_executable(PumpkinEngine main.cpp
+        UI/Components/UILayout.cpp)
 
 set_target_properties(PumpkinEngine PROPERTIES OUTPUT_NAME PumpkinEngine)
 set_target_properties(PumpkinEngine PROPERTIES PREFIX "")

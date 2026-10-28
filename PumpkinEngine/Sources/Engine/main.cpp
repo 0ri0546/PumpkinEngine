@@ -22,6 +22,7 @@ import Pumpkin.Utils.Utils;
 import Pumpkin.Utils.Window;
 import Pumpkin.UI.YAML;
 import Pumpkin.UI.Canvas;
+import Pumpkin.UI.Loader;
 
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Quaternion;
@@ -101,7 +102,9 @@ namespace {
 // ---------------------------------------------------------------------------
 
 int main() {
-    Pumpkin::UI::YAML::TestParser();
+    //Pumpkin::UI::YAML::TestParser();
+    Pumpkin::UI::TestUILoader();
+
     const auto fb = std::make_unique<FrameBuffer>();
     const auto db = std::make_unique<DepthBuffer>();
 

@@ -9,7 +9,7 @@ textures:
 
 fonts:
   - id: body_font
-    path: assets/fonts/Roboto-Regular.ttf
+    path: assets/fonts/Arial.ttf
     size: 24
 
 elements:
