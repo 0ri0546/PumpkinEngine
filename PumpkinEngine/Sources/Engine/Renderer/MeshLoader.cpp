@@ -11,7 +11,7 @@ import std;
 namespace Pumpkin {
     namespace {
         constexpr float         kDefaultVertexW = 1.0f;
-        constexpr std::uint32_t kInvalidIndex   = static_cast<std::uint32_t>(-1);
+        constexpr std::uint32_t kInvalidIndex   = std::numeric_limits<std::uint32_t>::max();
 
         Vec3f Position3(const Vertex& vertex) {
             return Vec3f{ vertex.position[0], vertex.position[1], vertex.position[2] };
@@ -87,9 +87,9 @@ namespace Pumpkin {
 
         const auto [attribs, objIndices] = LoadObj(filepath);
 
-        const auto validNormals = std::count_if(
-            objIndices.begin(), objIndices.end(),
-            [](const auto& idx) { return idx.normal_index != kInvalidIndex; });
+        const auto validNormals = std::ranges::count_if(objIndices, [](const auto& idx) {
+            return idx.normal_index != kInvalidIndex;
+        });
 
         std::println("OBJ normals: {} | Face references with normals: {} / {}",
                      attribs.normals.size() / 3, validNormals, objIndices.size());
@@ -154,7 +154,7 @@ namespace Pumpkin {
             );
         }
 
-        CenterAndScale(mesh, 2.0f);
+        CenterAndScale(mesh, 1.0f / kDefaultVertexW);
 
         mesh.colors = GenerateRGBA(mesh.vertices.size(), color.r, color.g, color.b, color.a);
         GenerateNormals(mesh);
