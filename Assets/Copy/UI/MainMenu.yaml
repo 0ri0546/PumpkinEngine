@@ -19,6 +19,7 @@ elements:
     anchor: center
     position: { x: 0, y: -100 }
     size: { width: 256, height: 128 }
+    color: [255, 255, 255, 255]
 
   - type: Text
     id: test_text

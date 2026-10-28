@@ -54,9 +54,8 @@ export namespace Pumpkin::UI
         ElementId id = 0;
         FontId font = 0;
         std::string content;
-        std::array<std::uint8_t, 4> color{
-            255, 255, 255, 255
-        };
+        float fontSize = 24.0f;
+        std::array<std::uint8_t, 4> color{255, 255, 255, 255};
     };
 
     struct UIStorage

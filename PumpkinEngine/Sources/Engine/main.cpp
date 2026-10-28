@@ -11,6 +11,7 @@ import Pumpkin.Renderer.Passes.Geometry;
 import Pumpkin.Renderer.Passes.Particle;
 import Pumpkin.Renderer.Passes.Skybox;
 import Pumpkin.Renderer.Passes.Text;
+import Pumpkin.Renderer.Passes.Image;
 import Pumpkin.Renderer.Renderer;
 import Pumpkin.Renderer.RenderPass;
 import Pumpkin.Renderer.TerrainBatcher;
@@ -23,6 +24,7 @@ import Pumpkin.Utils.Window;
 import Pumpkin.UI.YAML;
 import Pumpkin.UI.Canvas;
 import Pumpkin.UI.Loader;
+import Pumpkin.UI.Systems.Render;
 
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Quaternion;
@@ -215,54 +217,26 @@ int main() {
         std::println("It works bebou");
     }
 
-    constexpr int textReferenceX = 20;
-    constexpr int textReferenceY = 20;
+    auto particleSystem  = std::make_shared<ParticleSystem>(MakeSnowParticles());
+    auto particleSystem2 = std::make_shared<ParticleSystem>(MakeFountainParticles());
 
-    Text text(
-        font,
-        "hello world bebou",
-        14.0f,
-        SDL_Color{ 255, 0, 0, 255 },
-        textReferenceX,
-        textReferenceY
-    );
 
     std::ifstream uiFile("Assets/UI/MainMenu.yaml");
 
     if (!uiFile)
-    {
-        throw std::runtime_error(
-            "Impossible d'ouvrir Assets/UI/MainMenu.yaml"
-        );
-    }
+        throw std::runtime_error("Impossible d'ouvrir MainMenu.yaml");
 
     const std::string uiSource{
         std::istreambuf_iterator<char>(uiFile),
         std::istreambuf_iterator<char>()
     };
 
-    const auto uiRoot = Pumpkin::UI::YAML::Parse(uiSource);
-    auto canvas = Pumpkin::UI::Canvas::FromYAML(uiRoot);
+    auto uiRoot = Pumpkin::UI::YAML::Parse(uiSource);
+    auto loadedUI = Pumpkin::UI::LoadUI(uiRoot);
 
-    const auto UpdateUITextPosition = [&]()
-        {
-            const auto position = canvas.TransformPosition(
-                static_cast<float>(textReferenceX),
-                static_cast<float>(textReferenceY),
-                static_cast<int>(fb->width),
-                static_cast<int>(fb->height)
-            );
+    Pumpkin::UI::UIRenderSystem uiRenderer(loadedUI);
 
-            text.SetPosition(
-                static_cast<int>(std::lround(position.x)),
-                static_cast<int>(std::lround(position.y))
-            );
-        };
-
-    UpdateUITextPosition();
-
-    auto particleSystem  = std::make_shared<ParticleSystem>(MakeSnowParticles());
-    auto particleSystem2 = std::make_shared<ParticleSystem>(MakeFountainParticles());
+    uiRenderer.UpdateLayout(fb->width, fb->height);
 
     // Render passes and scene
 
@@ -271,7 +245,8 @@ int main() {
     renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
     renderer.AddPass<GeometryPass>();
     renderer.AddPass<OutlinePass>(0.03f);
-    renderer.AddPass<TextPass>(text);
+    renderer.AddPass<Pumpkin::ImagePass>(uiRenderer.Images());
+    renderer.AddPass<Pumpkin::TextPass>(uiRenderer.Texts());
 
     std::array scene{
         DrawItem{ .mesh = &waterMesh,          .model = &waterModel,   .material = &waterMaterial },
@@ -307,7 +282,7 @@ int main() {
                 surface = SDL_GetWindowSurface(window);
                 surface->format = SDL_PIXELFORMAT_RGBA32;
                 ResizeBuffers(renderer, *fb, *db, event.window.data1, event.window.data2);
-                UpdateUITextPosition();
+                uiRenderer.UpdateLayout(fb->width, fb->height);
                 camera.aspectRatio = static_cast<float>(fb->width) / static_cast<float>(fb->height);
                 toon.resize(static_cast<std::size_t>(fb->width) * fb->height);
                 break;

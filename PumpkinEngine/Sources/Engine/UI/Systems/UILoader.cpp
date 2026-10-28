@@ -201,7 +201,9 @@ namespace Pumpkin::UI
         result.canvas = Canvas::FromYAML(root);
 
         std::unordered_map<std::string, TextureId> textures;
-        std::unordered_map<std::string, FontId> fonts;
+
+        std::unordered_map<std::string, UIFontDefinition> fonts;
+        std::vector<UIFontDefinition> loadedFonts;
 
         TextureId nextTextureId = 1;
         FontId nextFontId = 1;
@@ -238,14 +240,24 @@ namespace Pumpkin::UI
 
             for (const Node& font : fontList->sequence)
             {
-                const std::string id = ReadString(font, "id");
+                const std::string name = ReadString(font, "id");
+                const std::string path = ReadString(font, "path");
+                const float size = ReadFloat(font, "size", 24.0f);
 
-                if (!fonts.emplace(id, nextFontId).second)
-                {
+                UIFontDefinition definition{
+                    nextFontId,
+                    name,
+                    path,
+                    size
+                };
+
+                if (!fonts.emplace(name, definition).second) {
                     throw std::runtime_error(
-                        "Police declaree plusieurs fois : " + id);
+                        "Police declaree plusieurs fois : " + name
+                    );
                 }
 
+                loadedFonts.push_back(definition);
                 ++nextFontId;
             }
         }
@@ -305,28 +317,29 @@ namespace Pumpkin::UI
             }
             else if (type == "Text")
             {
-                const std::string fontName =
-                    ReadString(element, "font");
-
+                const std::string fontName = ReadString(element, "font");
                 const auto font = fonts.find(fontName);
 
                 if (font == fonts.end())
                 {
                     throw std::runtime_error(
-                        "Police inconnue '" + fontName +
-                        "' pour l'element '" + name + "'.");
+                        "Police introuvable : " + fontName
+                    );
                 }
 
                 Text text;
                 text.id = id;
-                text.font = font->second;
+                text.font = font->second.id;
+                text.fontSize = font->second.size;
                 text.content = ReadString(element, "text");
                 text.color = ReadColor(
-                    element, {255, 255, 255, 255});
+                    element,
+                    {255, 255, 255, 255}
+                );
 
                 result.storage.transformEntities.push_back(id);
                 result.storage.transforms.push_back(transform);
-                result.storage.texts.push_back(text);
+                result.storage.texts.push_back(std::move(text));
             }
             else
             {
@@ -335,7 +348,11 @@ namespace Pumpkin::UI
             }
         }
 
-        return result;
+        return LoadedUI{
+            std::move(result.canvas),
+            std::move(result.storage),
+            std::move(loadedFonts)
+        };
     }
 
     void TestUILoader()
@@ -345,7 +362,7 @@ namespace Pumpkin::UI
         if (!file)
         {
             throw std::runtime_error(
-                "Impossible d'ouvrir Assets/UI/MainMenu.yaml");
+                "impossible to open yaml file");
         }
 
         const std::string source{
