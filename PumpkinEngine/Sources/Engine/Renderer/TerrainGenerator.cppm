@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.TerrainGenerator;
 
 import Pumpkin.Renderer.Types;
@@ -7,7 +11,7 @@ import Pumpkin.Math.Vec;
 import std;
 
 export namespace Pumpkin {
-    struct TerrainConfig {
+    struct PUMPKIN_API TerrainConfig {
         // Grid resolution (in cells) and world-space size.
         int cellsX = 64;
         int cellsZ = 64;
@@ -48,16 +52,16 @@ export namespace Pumpkin {
     };
 
     // The whole terrain as a single mesh.
-    [[nodiscard]] Mesh GenerateTerrain(const TerrainConfig& config = {});
+    [[nodiscard]] Mesh PUMPKIN_API GenerateTerrain(const TerrainConfig& config = {});
 
     // The same terrain split into chunkCells x chunkCells patches
-    [[nodiscard]] std::vector<TerrainChunk> GenerateTerrainChunks(
+    [[nodiscard]] std::vector<TerrainChunk> PUMPKIN_API GenerateTerrainChunks(
         const TerrainConfig& config,
         int chunkCells = 16
     );
 
     // Flat water surface, only emitted where the terrain is below config.waterLevel.
-    [[nodiscard]] Mesh GenerateWater(const TerrainConfig& config);
+    [[nodiscard]] Mesh PUMPKIN_API GenerateWater(const TerrainConfig& config);
 
     // Converts a level relative to [minHeight, maxHeight] into an absolute height.
     [[nodiscard]] float GetTerrainLevel(

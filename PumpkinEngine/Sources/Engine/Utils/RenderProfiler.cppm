@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Utils.RenderProfiler;
 
 import std;
@@ -16,7 +20,7 @@ export namespace Pumpkin::Prof {
         double worst = 0.0;   // ms, worst single call
     };
 
-    struct Stats {
+    struct PUMPKIN_API Stats {
         std::vector<Entry> entries;
         double topLevel = 0.0;
         unsigned frames = 0;
@@ -42,7 +46,7 @@ export namespace Pumpkin::Prof {
             windowStart = Clock::now();
         }
     };
-    Stats g;
+    PUMPKIN_API Stats g;
 
     class Scope {
     public:

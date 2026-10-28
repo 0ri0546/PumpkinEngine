@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.TerrainBatcher;
 
 import Pumpkin.Renderer.TerrainGenerator;
@@ -13,7 +17,7 @@ export namespace Pumpkin {
     //   - Inside():   chunks entirely in front of the near plane (no clipping needed)
     //   - Crossing(): chunks straddling the near plane (must go through the clipper)
     // Either mesh can be empty on a given frame.
-    class TerrainBatcher {
+    class PUMPKIN_API TerrainBatcher {
     public:
         explicit TerrainBatcher(std::vector<TerrainChunk> chunks);
 

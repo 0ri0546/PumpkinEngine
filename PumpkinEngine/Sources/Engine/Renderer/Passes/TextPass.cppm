@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Passes.Text;
 
 import Pumpkin.Renderer.RenderPass;
@@ -6,7 +10,7 @@ import Pumpkin.Renderer.Types;
 import std;
 
 export namespace Pumpkin {
-    class TextPass final : public RenderPass {
+    class PUMPKIN_API TextPass final : public RenderPass {
     public:
         explicit TextPass(Text& text) : m_text(text) {}
         [[nodiscard]] std::string_view Name() const override { return "Text"; }

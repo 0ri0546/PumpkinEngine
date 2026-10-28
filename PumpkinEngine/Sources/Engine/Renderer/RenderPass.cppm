@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.RenderPass;
 
 import Pumpkin.Renderer.Camera;
@@ -8,13 +12,13 @@ import Pumpkin.Math.Mat;
 import std;
 
 export namespace Pumpkin {
-    struct DrawItem {
+    struct PUMPKIN_API DrawItem {
         const Mesh*     mesh;
         const Mat4f*    model;
 		const Material* material;
     };
 
-    struct RenderContext {
+    struct PUMPKIN_API RenderContext {
         FrameBuffer&  fb;
         DepthBuffer&  db;
         const Camera& camera;
@@ -23,7 +27,7 @@ export namespace Pumpkin {
         std::vector<std::uint8_t>& toonMask; // for tooning, only saves tooned materials data
     };
 
-    class RenderPass {
+    class PUMPKIN_API RenderPass {
     public:
         virtual ~RenderPass() = default;
         [[nodiscard]] virtual std::string_view Name() const = 0;

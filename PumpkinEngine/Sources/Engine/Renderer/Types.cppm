@@ -1,5 +1,6 @@
 module;
 
+#include <DLL/Export.hpp>
 #include <SDL_FixedIncludes.h>
 #include <SDL3/SDL_ttf.h>
 
@@ -10,18 +11,8 @@ import Pumpkin.Math.Vec;
 import std;
 
 export namespace Pumpkin {
-    enum class TextureType {
-        Albedo,
-        Normal,
-        AO,
-        Diffuse,
-        Metal,
-        Roughness,
-        Displacement
-    };
 
-    struct Texture {
-        TextureType type = TextureType::Albedo;
+    struct PUMPKIN_API Texture {
         int width = 0;
         int height = 0;
         std::vector<std::uint32_t> pixels;
@@ -80,14 +71,14 @@ export namespace Pumpkin {
 	};
 
     // 8-bit color depth
-    struct alignas(4) Color {
+    struct alignas(4) PUMPKIN_API Color {
         std::uint8_t r{ 0 };
         std::uint8_t g{ 0 };
         std::uint8_t b{ 0 };
         std::uint8_t a{ 255 };
     };
 
-    struct Material {
+    struct PUMPKIN_API Material {
         // Factors
         Color baseColor{ 255, 255, 255, 255 };
         float metallic = 1.0f;
@@ -106,12 +97,12 @@ export namespace Pumpkin {
         bool          depthWrite = true;
     };
 
-    struct FrameBuffer {
+    struct PUMPKIN_API FrameBuffer {
         std::uint32_t* pixels{ nullptr };
         std::uint16_t width{}, height{};
     };
 
-    struct DepthBuffer {
+    struct PUMPKIN_API DepthBuffer {
         std::vector<float> pixels{};
         std::uint16_t width{}, height{};
     };
@@ -122,13 +113,13 @@ export namespace Pumpkin {
         Vec3f normal;
     };
 
-    struct Mesh {
+    struct PUMPKIN_API Mesh {
         std::vector<Vertex> vertices;
         std::vector<std::uint32_t> indices;
         std::vector<Color> colors;
     };
 
-    struct Text {
+    struct PUMPKIN_API Text {
         Text(TTF_Font* font, const char* text, float size, SDL_Color color, int x, int y) {
             this->text = text;
             this->font = font;

@@ -1,4 +1,5 @@
-add_executable(PumpkinEngine main.cpp)
+add_library(PumpkinEngine SHARED)
+add_executable(PumpkinRuntime main.cpp)
 
 set_target_properties(PumpkinEngine PROPERTIES OUTPUT_NAME PumpkinEngine)
 set_target_properties(PumpkinEngine PROPERTIES PREFIX "")
@@ -6,15 +7,29 @@ set_target_properties(PumpkinEngine PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
         LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
+target_compile_definitions(PumpkinEngine PRIVATE PUMPKIN_ENGINE_BUILD)
+set_target_properties(PumpkinEngine PROPERTIES
+    CXX_VISIBILITY_PRESET hidden
+    VISIBILITY_INLINES_HIDDEN ON
+)
+target_include_directories(PumpkinEngine PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/Platform)
+
+set_target_properties(PumpkinRuntime PROPERTIES OUTPUT_NAME PumpkinRuntime)
+set_target_properties(PumpkinRuntime PROPERTIES PREFIX "")
+set_target_properties(PumpkinRuntime PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
+)
 
 file(GLOB_RECURSE RENDER_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/*.cppm)
 
-target_sources(PumpkinEngine PRIVATE
+target_sources(PumpkinEngine PUBLIC
         FILE_SET engine_render_modules TYPE CXX_MODULES
         FILES ${RENDER_MODULES}
 )
 
-file(GLOB_RECURSE SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
+list(REMOVE_ITEM SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/main.cpp)
 
 target_sources(PumpkinEngine PRIVATE ${SOURCES})
 
@@ -29,7 +44,7 @@ if(WIN32)
             "${CMAKE_SOURCE_DIR}/PumpkinEngine/Libraries/SDL3/lib/x64/SDL3_ttf.dll"
             $<TARGET_FILE_DIR:PumpkinEngine>
     )
-    target_sources(PumpkinEngine PRIVATE
+    target_sources(PumpkinRuntime PRIVATE
             ${CMAKE_SOURCE_DIR}/Assets/Windows/PumpkinEngine.rc
     )
 endif()
@@ -41,3 +56,5 @@ add_custom_target(CopyAssets
         COMMENT "Copying assets"
 )
 add_dependencies(PumpkinEngine CopyAssets)
+
+target_link_libraries(PumpkinRuntime PRIVATE PumpkinEngine)

@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Passes.Outline;
 
 import Pumpkin.Renderer.RenderPass;
@@ -5,7 +9,7 @@ import Pumpkin.Renderer.RenderPass;
 import std;
 
 export namespace Pumpkin {
-    class OutlinePass final : public RenderPass {
+    class PUMPKIN_API OutlinePass final : public RenderPass {
     public:
         OutlinePass(float threshold = 0.02f, bool toonOnly = true) : threshold(threshold), toonOnly(toonOnly) {}
 

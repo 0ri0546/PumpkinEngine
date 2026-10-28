@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Renderer;
 
 import std;
@@ -6,8 +10,14 @@ import Pumpkin.Renderer.RenderPass;
 import Pumpkin.Utils.RenderProfiler;
 
 export namespace Pumpkin {
-    class Renderer {
+    class PUMPKIN_API Renderer {
     public:
+        Renderer() = default;
+        Renderer(const Renderer&) = delete;
+        Renderer& operator=(const Renderer&) = delete;
+        Renderer(Renderer&&) noexcept = default;
+        Renderer& operator=(Renderer&&) noexcept = default;
+
         template <std::derived_from<RenderPass> T, class... Args>
         T& AddPass(Args&&... args) {
             auto& p = m_passes.emplace_back(std::make_unique<T>(std::forward<Args>(args)...));

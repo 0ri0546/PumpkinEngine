@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Passes.Geometry;
 
 import Pumpkin.Renderer.PrimitiveAssembly;
@@ -9,7 +13,7 @@ import Pumpkin.Math.Vec;
 import std;
 
 export namespace Pumpkin {
-    class GeometryPass final : public RenderPass {
+    class PUMPKIN_API GeometryPass final : public RenderPass {
     public:
         [[nodiscard]] std::string_view Name() const override { return "Geometry"; }
         void Execute(RenderContext& ctx) override;
