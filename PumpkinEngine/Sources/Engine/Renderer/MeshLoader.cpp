@@ -154,7 +154,7 @@ namespace Pumpkin {
             );
         }
 
-        CenterAndScale(mesh, 1.0f / kDefaultVertexW);
+        CenterAndScale(mesh, 2.0f);
 
         mesh.colors = GenerateRGBA(mesh.vertices.size(), color.r, color.g, color.b, color.a);
         GenerateNormals(mesh);

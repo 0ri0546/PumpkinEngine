@@ -38,13 +38,13 @@ namespace Pumpkin {
         if (state[SDL_Scancode::SDL_SCANCODE_D]) right += 1.0f;
         if (state[SDL_Scancode::SDL_SCANCODE_A]) right -= 1.0f;
 
-        camera.move(forward, right, deltaTime);
+        camera.Move(forward, right, deltaTime);
     }
 
     void HandleCameraEvent(Camera& camera, const SDL_Event& event) {
         if (event.type == SDL_EVENT_MOUSE_MOTION &&
             (SDL_GetMouseState(nullptr, nullptr) & SDL_BUTTON_LMASK)) {
-            camera.rotate(
+            camera.Rotate(
                 static_cast<float>(event.motion.xrel),
                 static_cast<float>(event.motion.yrel)
             );

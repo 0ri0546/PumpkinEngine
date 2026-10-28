@@ -353,7 +353,7 @@ int main() {
                 const float fovRadians =
                     camera.FOVY * (std::numbers::pi_v<float> / 180.0f);
 
-                const Mat4f view = camera.getViewMatrix();
+                const Mat4f view = camera.GetViewMatrix();
 
                 const Mat4f projection = Mat4f::Perspective(
                     fovRadians,

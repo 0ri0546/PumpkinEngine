@@ -32,7 +32,7 @@ export namespace Pumpkin::UI::YAML
         [[nodiscard]] const Node* Find(const std::string& key) const;
     };
 
-    PUMPKIN_API [[nodiscard]] Node Parse(std::string_view source);
+    [[nodiscard]] PUMPKIN_API Node Parse(std::string_view source);
 
     // Fonction temporaire de test.
     PUMPKIN_API void TestParser();

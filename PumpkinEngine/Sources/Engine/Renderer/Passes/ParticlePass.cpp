@@ -25,7 +25,7 @@ namespace Pumpkin {
                 static_cast<float>(ctx.fb.width) /
                 static_cast<float>(ctx.fb.height);
 
-            const Mat4f view = ctx.camera.getViewMatrix();
+            const Mat4f view = ctx.camera.GetViewMatrix();
 
             const float fov =
                 ctx.camera.FOVY * std::numbers::pi_v<float> / 180.0f;

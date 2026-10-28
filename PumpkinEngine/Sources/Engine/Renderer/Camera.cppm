@@ -33,7 +33,7 @@ export namespace Pumpkin {
         float speed = 5.0f;
         float sensitivity = 0.1f;
 
-        void updateVectors() {
+        void UpdateVectors() {
             const float radYaw = yaw * (std::numbers::pi_v<float> / 180.0f);
             const float radPitch = pitch * (std::numbers::pi_v<float> / 180.0f);
 
@@ -47,7 +47,7 @@ export namespace Pumpkin {
             up = Cross(right, front).Normalized();
         }
 
-        void rotate(float deltaX, float deltaY) {
+        void Rotate(float deltaX, float deltaY) {
             yaw += deltaX * sensitivity;
             pitch -= deltaY * sensitivity;
 
@@ -57,19 +57,17 @@ export namespace Pumpkin {
             if (pitch < -89.0f)
                 pitch = -89.0f;
 
-            updateVectors();
+            UpdateVectors();
         }
 
-        void move(float forward, float rightMovement, float deltaTime) {
+        void Move(float forward, float rightMovement, float deltaTime) {
             const float velocity = speed * deltaTime;
 
             pos += front * (forward * velocity);
             pos += right * (rightMovement * velocity);
-
-            //std::cout << "cam x : " << pos[0] << ", cam y : " << pos[1] << ", cam z : " << pos[2] << std::endl;
         }
 
-        [[nodiscard]] Mat4f getViewMatrix() const {
+        [[nodiscard]] Mat4f GetViewMatrix() const {
             return Mat4f::LookAt(pos, pos + front, up);
         }
     };
