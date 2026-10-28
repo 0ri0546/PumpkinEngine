@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.Registry;
 
 import Pumpkin.ECS.Component;
@@ -9,18 +13,18 @@ import std;
 export namespace Pumpkin::ECS {
     using ComponentId = std::uint32_t;
 
-    inline ComponentId NextComponentId() {
+    inline ComponentId PUMPKIN_API NextComponentId() {
         static std::atomic<ComponentId> id = 0;
         return id.fetch_add(1, std::memory_order_relaxed);
     }
 
     template <Component T>
-    ComponentId ComponentTypeId() {
+    ComponentId PUMPKIN_API ComponentTypeId() {
         static const ComponentId id = NextComponentId();
         return id;
     }
 
-    class Registry {
+    class PUMPKIN_API Registry {
     public:
         Registry() = default;
         ~Registry() = default;

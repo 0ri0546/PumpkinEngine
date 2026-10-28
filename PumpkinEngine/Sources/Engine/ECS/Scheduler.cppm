@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.ECS.Scheduler;
 
 import Pumpkin.ECS.CommandBuffer;
@@ -14,7 +18,7 @@ export namespace Pumpkin::ECS {
 
     // What a system reads / writes. Two systems conflict when one writes something the
     // other reads or writes. Write implies read
-    class Access {
+    class PUMPKIN_API Access {
     public:
         template <Component... Ts>
         Access& Read() {
@@ -70,7 +74,7 @@ export namespace Pumpkin::ECS {
     };
 
     // What a system sees. Every component access is checked against the declared Access
-    class SystemContext {
+    class PUMPKIN_API SystemContext {
     public:
         SystemContext(Registry& registry, const World& world, const Access& access, CommandBuffer& commands,
                       ThreadPool& pool, float deltaTime)
@@ -143,7 +147,7 @@ export namespace Pumpkin::ECS {
 
     // Scheduler: systems run in registration order *semantically* (a later system that
     // conflicts with an earlier one waits for it), and in parallel whenever access allows
-    class Scheduler {
+    class PUMPKIN_API Scheduler {
     public:
         using SystemFn = std::function<void(SystemContext&)>;
 
