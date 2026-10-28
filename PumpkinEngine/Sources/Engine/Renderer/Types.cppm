@@ -134,14 +134,14 @@ export namespace Pumpkin {
             this->font = font;
             this->x = x, this->y = y;
             this->color = { color.b, color.g, color.r, color.a };
+            this->fontSize = size;
+            TTF_SetFontSize(this->font, this->fontSize);
             this->surface = TTF_RenderText_Blended(
                 font,
                 text,
                 0,
                 this->color
             );
-            this->fontSize = size;
-            TTF_SetFontSize(this->font, this->fontSize);
         }
 
         Text& SetSize(float size) {
