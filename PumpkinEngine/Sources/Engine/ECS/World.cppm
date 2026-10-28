@@ -77,6 +77,8 @@ export namespace Pumpkin::ECS {
             return m_registry.View<Components...>();
         }
 
+        Registry& GetRegistry() { return m_registry; }
+
     private:
         std::uint32_t m_nextIndex = 1;
         std::vector<std::uint32_t> m_freeIndices;

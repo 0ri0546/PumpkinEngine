@@ -10,8 +10,8 @@ export namespace Pumpkin::ECS {
     using ComponentId = std::uint32_t;
 
     inline ComponentId NextComponentId() {
-        static ComponentId id = 0;
-        return id++;
+        static std::atomic<ComponentId> id = 0;
+        return id.fetch_add(1, std::memory_order_relaxed);
     }
 
     template <Component T>
@@ -183,6 +183,13 @@ export namespace Pumpkin::ECS {
 
             Iterator end() const {
                 return {m_driver.end(), m_driver.end(), m_pools, m_driverPool};
+            }
+
+            std::size_t Size() const { return m_driver.size(); }
+
+            QueryView Slice(std::size_t first, std::size_t count) const {
+                return QueryView(m_driverPool, m_driver.subspan(first, count),
+                                 std::get<ComponentPool<Components>*>(m_pools)...);
             }
 
         private:
