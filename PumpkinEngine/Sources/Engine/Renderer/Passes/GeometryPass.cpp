@@ -42,7 +42,8 @@ namespace Pumpkin {
                 info,
                 *item.model,
                 ctx.camera,
-                static_cast<float>(ctx.fb.width) / static_cast<float>(ctx.fb.height));
+                static_cast<float>(ctx.fb.width) / static_cast<float>(ctx.fb.height),
+                ctx.effect);
         }
 
         // Every vertex is outside the same plane, nothing can be visible

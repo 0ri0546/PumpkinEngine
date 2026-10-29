@@ -5,8 +5,27 @@ import Pumpkin.Utils.ThreadPool;
 import std;
 
 namespace Pumpkin {
+    /// @brief Wave along the normal. Runs in model space.
+    static void ApplyVertexEffect(const VertexEffect& effect, float phase,
+        float& px, float& py, float& pz, float& nx, float& ny, float& nz) {
+        const float arg = effect.frequency * py + phase;
+        const float wave = std::sin(arg) * effect.amplitude;
+        const float slope = std::cos(arg) * effect.amplitude * effect.frequency;
+
+        // Tilts the normal along the wave slope using the tangent that points up the surface
+        const float tx = -nx * ny, ty = 1.0f - ny * ny, tz = -nz * ny;
+        nx -= slope * tx;
+        ny -= slope * ty;
+        nz -= slope * tz;
+
+        px += nx * wave;
+        py += ny * wave;
+        pz += nz * wave;
+    }
+
     ClipFlags VertexShader(std::span<const Vertex> vertices, std::vector<Vertex>& out,
-                       ClipInfo& info, const Mat4f& model, const Camera& camera, float aspectRatio)
+                   ClipInfo& info, const Mat4f& model, const Camera& camera, float aspectRatio,
+                   const VertexEffect& effect)
     {
         out.resize(vertices.size());
         info.codes.Reserve(vertices.size());
@@ -19,6 +38,9 @@ namespace Pumpkin {
         const Mat4f viewModel = view * model;
         const Mat4f mvp       = projection * viewModel;
 
+        // Per-call constants of the effect.
+        const float phase      = effect.time * effect.speed;
+
         std::atomic<std::uint32_t> andCode{ 0x3F }, orCode{ 0 };
 
         const auto transform = [&](std::size_t begin, std::size_t end) {
@@ -28,9 +50,15 @@ namespace Pumpkin {
                 Vertex& o = out[i];
                 o = v; // keeps uv etc.
 
-                o.position = mvp * v.position;
+                float px = v.position[0], py = v.position[1], pz = v.position[2];
+                float nx = v.normal[0],   ny = v.normal[1],   nz = v.normal[2];
 
-                const Vec4f n = viewModel * Vec4f{ v.normal[0], v.normal[1], v.normal[2], 0.0f };
+                if (effect.enabled)
+                    ApplyVertexEffect(effect, phase, px, py, pz, nx, ny, nz);
+
+                o.position = mvp * Vec4f{ px, py, pz, v.position[3] };
+
+                const Vec4f n = viewModel * Vec4f{ nx, ny, nz, 0.0f };
                 o.normal = Vec3f{ n[0], n[1], n[2] }.Normalized();
 
                 const std::uint32_t c = Outcode(o.position);

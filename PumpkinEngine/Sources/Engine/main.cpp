@@ -209,12 +209,12 @@ int main() {
             Mat4f terrainModel = Mat4f::Identity();
             Mat4f waterModel = Mat4f::Identity();
 
-    Material terrainMaterial{
-        .shader = ShaderId::Lambert
-    };
-    Material waterMaterial{
-        .shader = ShaderId::VertexColor
-    };
+            Material terrainMaterial{
+                .shader = ShaderId::Lambert
+            };
+            Material waterMaterial{
+                .shader = ShaderId::VertexColor
+            };
 
             // Particles
             auto particleSystem =
@@ -282,6 +282,8 @@ int main() {
                 }
             };
 
+            VertexEffect vertexEffect {};
+
             // Main loop
             const auto frameTime =
                 std::chrono::nanoseconds(1'000'000'000 / targetFps);
@@ -325,6 +327,11 @@ int main() {
                         toon.resize(
                             static_cast<std::size_t>(fb->width) * fb->height
                         );
+                        break;
+
+                    case SDL_EVENT_KEY_DOWN:
+                        if (event.key.key == SDLK_V && !event.key.repeat)
+                            vertexEffect.enabled = !vertexEffect.enabled;
                         break;
 
                     default:
@@ -371,9 +378,11 @@ int main() {
                     .camera = camera,
                     .deltaTime = deltaTime,
                     .scene = scene,
-                    .toonMask = toon
+                    .toonMask = toon,
+                    .effect = vertexEffect
                 };
 
+                vertexEffect.time += deltaTime;
                 renderer.Render(ctx);
                 SDL_UpdateWindowSurface(window);
 

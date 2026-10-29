@@ -1,3 +1,7 @@
+module;
+
+#include <DLL/Export.hpp>
+
 export module Pumpkin.Renderer.Shaders;
 
 import Pumpkin.Renderer.Camera;
@@ -59,7 +63,8 @@ export namespace Pumpkin {
         ClipInfo& info,
         const Mat4f& model,
         const Camera& camera,
-        float aspectRatio);
+        float aspectRatio,
+        const VertexEffect& effect = {});
 
     template <FragmentShader_T Shader>
     void FragmentShader(
