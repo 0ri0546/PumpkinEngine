@@ -106,6 +106,7 @@ namespace Pumpkin {
             static BlinnPhongShader blinnPhong{};
             static PBRShader pbr{};
             static ToonShader toon{};
+            static AlbedoColorShader alb{};
             switch (item.material->shader) {
             case ShaderId::VertexColor:
                 vcs = VertexColorShader {
@@ -143,6 +144,9 @@ namespace Pumpkin {
                     .colors = colors
                 };
                 FragmentShader(m_batch, ctx, toon, item);
+                break;
+            case ShaderId::AlbedoColor:
+                FragmentShader(m_batch, ctx, alb, item);
                 break;
             default:
                 break;

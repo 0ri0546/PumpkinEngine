@@ -76,7 +76,8 @@ export namespace Pumpkin {
 		BlinnPhong,
         Lambert,
 		VertexColor, 
-        Toon
+        Toon,
+        AlbedoColor
 	};
 
     // 8-bit color depth

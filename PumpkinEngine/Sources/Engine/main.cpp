@@ -46,8 +46,8 @@ namespace {
 
     TerrainConfig MakeTerrainConfig() {
         return TerrainConfig{
-            .cellsX = 128,
-            .cellsZ = 128,
+            .cellsX = 256,
+            .cellsZ = 256,
             .sizeX = 50.0f,
             .sizeZ = 50.0f,
             .minHeight = -2.0f,
@@ -191,7 +191,7 @@ int main() {
                 .roughness = 0.3f,
                 .ao = 0.5f,
                 .albedo = &cowAlbedo,
-                .shader = ShaderId::Toon
+                .shader = ShaderId::Lambert
             };
 
             Material vkRoomMaterial{

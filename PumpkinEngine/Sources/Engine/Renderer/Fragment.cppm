@@ -75,6 +75,18 @@ export namespace Pumpkin {
         }
     };
 
+    /// @brief Default shader: the interpolated vertex colors.
+    struct AlbedoColorShader {
+        [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
+            return {
+                f.albedo[0] * 255.0f,
+                f.albedo[1] * 255.0f,
+                f.albedo[2] * 255.0f,
+                f.albedo[3] * 255.0f
+            };
+        }
+    };
+
     /// @brief Vertex color * albedo texture, in the same 0..255 space as the vertex colors.
     /// The rasterizer stores the texture in linear space (squared), so the square root brings it
     /// back. Without a texture the albedo is 1 and the vertex color is returned unchanged.
