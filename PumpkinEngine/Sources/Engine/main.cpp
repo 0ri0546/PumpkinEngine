@@ -29,6 +29,7 @@ import Pumpkin.UI.Systems.Render;
 
 import Pumpkin.Math.Mat;
 import Pumpkin.Math.Quaternion;
+import Pumpkin.Math.Vec;
 
 import std;
 
