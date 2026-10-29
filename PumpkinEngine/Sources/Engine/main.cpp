@@ -327,74 +327,21 @@ int main() {
                     .effect = vertexEffect
                 };
 
-                SDL_Event event;
-                while (SDL_PollEvent(&event)) {
-                    switch (event.type) {
-                    case SDL_EVENT_QUIT:
-                        isRunning = false;
-                        break;
-
-                    case SDL_EVENT_WINDOW_RESIZED:
-                        SDL_UpdateWindowSurface(window);
-                        surface = SDL_GetWindowSurface(window);
-                        surface->format = SDL_PIXELFORMAT_RGBA32;
-
-                        ResizeBuffers(
-                            renderer, *fb, *db,
-                            event.window.data1, event.window.data2
-                        );
-
-                        uiRenderer.UpdateLayout(fb->width, fb->height);
-
-                        camera.aspectRatio =
-                            static_cast<float>(fb->width) /
-                            static_cast<float>(fb->height);
-
-                        toon.resize(
-                            static_cast<std::size_t>(fb->width) * fb->height
-                        );
-
-                        textPass.ResizeText(windowDims[0],windowDims[1], ctx);
-                        break;
-
-                    case SDL_EVENT_KEY_DOWN:
-                        if (event.key.key == SDLK_V && !event.key.repeat)
-                            vertexEffect.enabled = !vertexEffect.enabled;
-                        break;
-
-                    case SDL_EVENT_MOUSE_MOTION:
-                        uiRenderer.HandleMouseMove(
-                            static_cast<int>(event.motion.x),
-                            static_cast<int>(event.motion.y)
-                        );
-                        break;
-
-                    case SDL_EVENT_MOUSE_BUTTON_DOWN:
-                        if (event.button.button == SDL_BUTTON_LEFT)
-                        {
-                            uiRenderer.HandleMouseButtonDown(
-                                static_cast<int>(event.button.x),
-                                static_cast<int>(event.button.y)
-                            );
-                        }
-                        break;
-
-                    case SDL_EVENT_MOUSE_BUTTON_UP:
-                        if (event.button.button == SDL_BUTTON_LEFT)
-                        {
-                            uiRenderer.HandleMouseButtonUp(
-                                static_cast<int>(event.button.x),
-                                static_cast<int>(event.button.y)
-                            );
-                        }
-                        break;
-
-                    default:
-                        break;
-                    }
-
-                    HandleCameraEvent(camera, event);
-                }
+                HandleEvents(
+                    isRunning,
+                    window,
+                    surface,
+                    renderer,
+                    fb,
+                    db,
+                    camera,
+                    uiRenderer,
+                    textPass,
+                    ctx,
+                    vertexEffect,
+                    toon,
+                    windowDims
+                );
 
                 if (WindowNotFocused(window)) {
                     std::this_thread::sleep_until(nextFrame);
