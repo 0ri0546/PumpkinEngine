@@ -30,6 +30,25 @@ export namespace Pumpkin {
             }
         }
 
+        void ResizeText(
+            float referenceWidth,
+            float referenceHeight,
+            RenderContext& ctx)
+        {
+            const float scaleX =
+                static_cast<float>(ctx.fb.width) / referenceWidth;
+
+            const float scaleY =
+                static_cast<float>(ctx.fb.height) / referenceHeight;
+
+            const float scale = std::min(scaleX, scaleY);
+
+            for (Text& text : m_texts)
+            {
+                text.SetSize(16.0f * scale);
+            }
+        }
+
     private:
         void DrawText(const FrameBuffer&, const Text&);
 

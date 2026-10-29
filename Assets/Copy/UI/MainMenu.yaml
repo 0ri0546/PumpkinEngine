@@ -13,7 +13,6 @@ fonts:
     size: 16
 
 elements:
-
   - type: Image
     id: hud_logo
     texture: logo
@@ -24,133 +23,133 @@ elements:
   # Nom de la région
   - type: Text
     id: region_name
-    text: "KINGDOMS OF ETERNITY"
+    text: "Kingdom of Pumpkin"
     font: arial
     color: [235, 215, 175, 255]
     anchor: top-center
-    position: { x: 300, y: 35 }
+    position: { x: 15, y: 3 }
 
   - type: Text
     id: season
-    text: "AUTUMN  |  YEAR 1"
+    text: "Autumn - year 1"
     font: arial
     color: [205, 195, 170, 255]
     anchor: top-center
-    position: { x: 300, y: 75 }
+    position: { x: 15, y: 5 }
 
   # Ressources : haut gauche
   - type: Text
     id: resources_title
-    text: "RESOURCES"
+    text: "Resources"
     font: arial
     color: [235, 215, 175, 255]
     anchor: top-left
-    position: { x: 30, y: 35 }
+    position: { x: 1, y: 3 }
 
   - type: Text
     id: resource_wood
-    text: "WOOD       125"
+    text: "Wood       125"
     font: arial
     color: [225, 220, 205, 255]
     anchor: top-left
-    position: { x: 30, y: 75 }
+    position: { x: 1.5625, y: 6.9444 }
 
   - type: Text
     id: resource_stone
-    text: "STONE        68"
+    text: "Stone        68"
     font: arial
     color: [225, 220, 205, 255]
     anchor: top-left
-    position: { x: 30, y: 110 }
+    position: { x: 1.5625, y: 10.1852 }
 
   - type: Text
     id: resource_food
-    text: "FOOD         240"
+    text: "Food         240"
     font: arial
     color: [225, 220, 205, 255]
     anchor: top-left
-    position: { x: 30, y: 145 }
+    position: { x: 1.5625, y: 13.4259 }
 
   - type: Text
     id: resource_gold
-    text: "TREASURY    520"
+    text: "Treasury    520"
     font: arial
     color: [235, 205, 125, 255]
     anchor: top-left
-    position: { x: 30, y: 180 }
+    position: { x: 1.5625, y: 16.6667 }
 
   # Population : haut droite
   - type: Text
     id: population_title
-    text: "SETTLEMENT"
+    text: "Settlement"
     font: arial
     color: [235, 215, 175, 255]
     anchor: top-right
-    position: { x: -30, y: 35 }
+    position: { x: -1.5625, y: 3.2407 }
 
   - type: Text
     id: population
-    text: "POPULATION   86"
+    text: "Population   86"
     font: arial
     color: [225, 220, 205, 255]
     anchor: top-right
-    position: { x: -30, y: 75 }
+    position: { x: -1.5625, y: 6.9444 }
 
   - type: Text
     id: happiness
-    text: "APPROVAL       78%"
+    text: "Approval       78%"
     font: arial
     color: [180, 215, 165, 255]
     anchor: top-right
-    position: { x: -30, y: 110 }
+    position: { x: -1.5625, y: 10.1852 }
 
   - type: Text
     id: provisions
-    text: "PROVISIONS   12 MONTHS"
+    text: "Provisions   12 MONTHS"
     font: arial
     color: [225, 220, 205, 255]
     anchor: top-right
-    position: { x: -30, y: 145 }
+    position: { x: -1.5625, y: 13.4259 }
 
   # Objectif courant : bas gauche
   - type: Text
     id: objective_title
-    text: "CURRENT OBJECTIVE"
+    text: "Current objective"
     font: arial
     color: [235, 215, 175, 255]
     anchor: bottom-left
-    position: { x: 30, y: -115 }
+    position: { x: 1.5625, y: -10.6481 }
 
   - type: Text
     id: objective
-    text: "BUILD A WOODCUTTER'S CAMP"
+    text: "Build a woodcutters's camp"
     font: arial
     color: [225, 220, 205, 255]
     anchor: bottom-left
-    position: { x: 30, y: -75 }
+    position: { x: 1.5625, y: -6.9444 }
 
   # Commandes : bas centre
   - type: Text
     id: controls
-    text: "[ B ] BUILD     [ M ] MAP     [ T ] TOWN"
+    text: "[ B ] Build     [ M ] Map     [ T ] Town"
     font: arial
     color: [215, 205, 180, 255]
     anchor: bottom-center
-    position: { x: 0, y: -35 }
+    position: { x: 0, y: -3.2407 }
 
   # Indication de vitesse : bas droite
   - type: Text
     id: game_speed
-    text: "II  PAUSED"
+    text: "II  Paused"
     font: arial
     color: [235, 215, 175, 255]
     anchor: bottom-right
-    position: { x: -30, y: -75 }
+    position: { x: -1.5625, y: -6.9444 }
 
   - type: Text
     id: engine_credit
-    text: "PUMPKIN ENGINE"
+    text: "Pumpkin engine"
     font: arial
     color: [140, 135, 125, 255]
     anchor: bottom-right
-    position: { x: -30, y: -35 }
+    position: { x: -1.5625, y: -3.2407 }

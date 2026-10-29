@@ -67,8 +67,13 @@ namespace Pumpkin::UI
                 "Les identifiants et les transformations UI ne correspondent pas.");
         }
 
-        const ScaleResult scale =
-            canvas.CalculateScale(windowWidth, windowHeight);
+        const float scaleX =
+            static_cast<float>(windowWidth) /
+            static_cast<float>(canvas.referenceWidth);
+
+        const float scaleY =
+            static_cast<float>(windowHeight) /
+            static_cast<float>(canvas.referenceHeight);
 
         std::vector<UIRect> result;
         result.reserve(storage.transforms.size());
@@ -83,35 +88,41 @@ namespace Pumpkin::UI
             const AnchorFactors anchor =
                 GetAnchorFactors(transform.anchor);
 
-            float logicalX =
-                static_cast<float>(canvas.referenceWidth) * anchor.x
-                + transform.position.x
-                - transform.size.width * anchor.x;
+            float width = transform.size.width * scaleX;
+            float height = transform.size.height * scaleY;
 
-            float logicalY =
-                static_cast<float>(canvas.referenceHeight) * anchor.y
-                + transform.position.y
-                - transform.size.height * anchor.y;
+            const float positionX =
+                transform.position.x / 100.0f *
+                static_cast<float>(windowWidth);
 
-            float logicalWidth = transform.size.width;
-            float logicalHeight = transform.size.height;
+            const float positionY =
+                transform.position.y / 100.0f *
+                static_cast<float>(windowHeight);
+
+            float x =
+                static_cast<float>(windowWidth) * anchor.x
+                + positionX
+                - width * anchor.x;
+
+            float y =
+                static_cast<float>(windowHeight) * anchor.y
+                + positionY
+                - height * anchor.y;
 
             if (transform.anchor == Anchor::Stretch)
             {
-                logicalX = 0.0f;
-                logicalY = 0.0f;
-                logicalWidth =
-                    static_cast<float>(canvas.referenceWidth);
-                logicalHeight =
-                    static_cast<float>(canvas.referenceHeight);
+                x = 0.0f;
+                y = 0.0f;
+                width = static_cast<float>(windowWidth);
+                height = static_cast<float>(windowHeight);
             }
 
             result.push_back({
                 id,
-                scale.offsetX + logicalX * scale.x,
-                scale.offsetY + logicalY * scale.y,
-                logicalWidth * scale.x,
-                logicalHeight * scale.y
+                x,
+                y,
+                width,
+                height
             });
         }
 

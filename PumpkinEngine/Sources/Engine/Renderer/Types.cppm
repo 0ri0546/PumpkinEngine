@@ -148,7 +148,7 @@ export namespace Pumpkin {
             if (size <= 0.0f)
                 return *this;
             fontSize = size;
-            return *this;
+            return Build();
         }
 
         Text& SetFont(TTF_Font* newFont) {

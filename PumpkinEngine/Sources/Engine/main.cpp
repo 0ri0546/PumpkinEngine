@@ -251,8 +251,8 @@ int main() {
             renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
             renderer.AddPass<GeometryPass>();
             renderer.AddPass<OutlinePass>(0.03f);
-            renderer.AddPass<Pumpkin::ImagePass>(uiRenderer.Images());
-            renderer.AddPass<Pumpkin::TextPass>(uiRenderer.Texts());
+            renderer.AddPass<ImagePass>(uiRenderer.Images());
+            auto& textPass = renderer.AddPass<TextPass>(uiRenderer.Texts());
 
             std::array scene{
                 DrawItem{
@@ -297,11 +297,35 @@ int main() {
                 static_cast<std::size_t>(fb->width) * fb->height
             );
 
+            Vec2f windowDims{};
+            {
+                SDL_DisplayID* ids = SDL_GetDisplays(nullptr);
+                const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(*ids);
+                windowDims = { static_cast<float>(mode->w), static_cast<float>(mode->h) };
+                SDL_free(ids);
+            }
+
             while (isRunning) {
                 nextFrame += frameTime;
 
-                SDL_Event event;
+                const auto currentTime = std::chrono::steady_clock::now();
+                const std::chrono::duration<float> elapsedTime =
+                    currentTime - previousTime;
 
+                const float deltaTime = elapsedTime.count();
+                previousTime = currentTime;
+
+                RenderContext ctx{
+                    .fb = *fb,
+                    .db = *db,
+                    .camera = camera,
+                    .deltaTime = deltaTime,
+                    .scene = scene,
+                    .toonMask = toon,
+                    .effect = vertexEffect
+                };
+
+                SDL_Event event;
                 while (SDL_PollEvent(&event)) {
                     switch (event.type) {
                     case SDL_EVENT_QUIT:
@@ -327,6 +351,8 @@ int main() {
                         toon.resize(
                             static_cast<std::size_t>(fb->width) * fb->height
                         );
+
+                        textPass.ResizeText(windowDims[0],windowDims[1], ctx);
                         break;
 
                     case SDL_EVENT_KEY_DOWN:
@@ -346,13 +372,6 @@ int main() {
                     continue;
                 }
 
-                const auto currentTime = std::chrono::steady_clock::now();
-                const std::chrono::duration<float> elapsedTime =
-                    currentTime - previousTime;
-
-                const float deltaTime = elapsedTime.count();
-                previousTime = currentTime;
-
                 UpdateCameraMovement(camera, deltaTime);
 
                 fb->pixels = static_cast<std::uint32_t*>(surface->pixels);
@@ -371,16 +390,6 @@ int main() {
 
                 const Mat4f viewModel = view * terrainModel;
                 terrain.Update(projection * viewModel);
-
-                RenderContext ctx{
-                    .fb = *fb,
-                    .db = *db,
-                    .camera = camera,
-                    .deltaTime = deltaTime,
-                    .scene = scene,
-                    .toonMask = toon,
-                    .effect = vertexEffect
-                };
 
                 vertexEffect.time += deltaTime;
                 renderer.Render(ctx);
