@@ -11,19 +11,17 @@ import Pumpkin.UI.Components;
 
 export namespace Pumpkin::UI
 {
-    struct UIFontDefinition;
-
-    struct PUMPKIN_API LoadedUI {
-        Canvas canvas;
-        UIStorage storage;
-        std::vector<UIFontDefinition> fonts;
-    };
-
     struct PUMPKIN_API UIFontDefinition {
         FontId id = 0;
         std::string name;
         std::string path;
         float size = 24.0f;
+    };
+
+    struct PUMPKIN_API LoadedUI {
+        Canvas canvas;
+        UIStorage storage;
+        std::vector<UIFontDefinition> fonts;
     };
 
     [[nodiscard]]
