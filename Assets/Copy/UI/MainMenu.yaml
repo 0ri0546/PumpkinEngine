@@ -13,6 +13,17 @@ fonts:
     size: 16
 
 elements:
+  - type: Button
+    id: play_button
+    anchor: center
+    position: { x: 0, y: 10 }
+    size: { width: 240, height: 60 }
+    text: "JOUER"
+    normalColor: [70, 70, 70, 255]
+    hoveredColor: [100, 100, 100, 255]
+    pressedColor: [45, 45, 45, 255]
+    disabledColor: [35, 35, 35, 180]
+
   - type: Image
     id: hud_logo
     texture: logo

@@ -45,7 +45,7 @@ export namespace Pumpkin {
 
             for (Text& text : m_texts)
             {
-                text.SetSize(16.0f * scale);
+                text.SetSize(20.0f * scale);
             }
         }
 

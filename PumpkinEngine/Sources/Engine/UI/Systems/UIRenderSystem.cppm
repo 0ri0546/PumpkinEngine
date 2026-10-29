@@ -14,6 +14,7 @@ import Pumpkin.Renderer.Types;
 import Pumpkin.UI.Components;
 import Pumpkin.Renderer.Texture;
 import Pumpkin.Renderer.Passes.Image;
+import Pumpkin.Renderer.Passes.Button;
 
 export namespace Pumpkin::UI
 {
@@ -28,6 +29,8 @@ export namespace Pumpkin::UI
             BuildImages();
             MeasureTexts();
             BuildTexts();
+            BuildButtonTexts();
+            BuildButtons();
         }
 
         UIRenderSystem(const UIRenderSystem&) = delete;
@@ -88,6 +91,36 @@ export namespace Pumpkin::UI
                 image.width = static_cast<int>(std::lround(rect.width));
                 image.height = static_cast<int>(std::lround(rect.height));
             }
+
+            for (const auto& rect : rects)
+            {
+                const auto it = m_buttonIndices.find(rect.id);
+
+                if (it == m_buttonIndices.end())
+                    continue;
+
+                auto& button = m_buttons[it->second];
+
+                button.x = static_cast<int>(std::lround(rect.x));
+                button.y = static_cast<int>(std::lround(rect.y));
+                button.width = static_cast<int>(std::lround(rect.width));
+                button.height = static_cast<int>(std::lround(rect.height));
+
+                const auto textIt = m_buttonTextIndices.find(rect.id);
+
+                if (textIt != m_buttonTextIndices.end())
+                {
+                    auto& text = m_texts[textIt->second];
+
+                    if (text.surface)
+                    {
+                        text.SetPosition(
+                            button.x + (button.width - text.surface->w) / 2,
+                            button.y + (button.height - text.surface->h) / 2
+                        );
+                    }
+                }
+            }
         }
 
         [[nodiscard]]
@@ -100,6 +133,74 @@ export namespace Pumpkin::UI
         std::span<const Pumpkin::UIImageDraw> Images() const
         {
             return m_images;
+        }
+
+        [[nodiscard]]
+        std::span<const UIButtonDraw> Buttons() const
+        {
+            return m_buttons;
+        }
+
+        void HandleMouseMove(int mouseX, int mouseY)
+        {
+            for (std::size_t i = 0; i < m_buttons.size(); ++i)
+            {
+                auto& draw = m_buttons[i];
+                const auto& button = m_ui.storage.buttons[i];
+
+                const bool hovered =
+                    button.enabled &&
+                    mouseX >= draw.x && mouseX < draw.x + draw.width &&
+                    mouseY >= draw.y && mouseY < draw.y + draw.height;
+
+                draw.scale = hovered ? 1.1f : 1.0f;
+                draw.color = hovered
+                    ? button.hoveredColor
+                    : button.normalColor;
+            }
+        }
+
+        void HandleMouseButtonDown(int mouseX, int mouseY)
+        {
+            for (std::size_t i = 0; i < m_buttons.size(); ++i)
+            {
+                const auto& button = m_ui.storage.buttons[i];
+                const auto& draw = m_buttons[i];
+
+                if (!button.enabled)
+                    continue;
+
+                if (mouseX >= draw.x && mouseX < draw.x + draw.width &&
+                    mouseY >= draw.y && mouseY < draw.y + draw.height)
+                {
+                    m_pressedButton = i;
+                    m_buttons[i].color = button.pressedColor;
+                    return;
+                }
+            }
+
+            m_pressedButton.reset();
+        }
+
+        void HandleMouseButtonUp(int mouseX, int mouseY)
+        {
+            if (!m_pressedButton.has_value())
+                return;
+
+            const std::size_t index = *m_pressedButton;
+            m_pressedButton.reset();
+
+            const auto& button = m_ui.storage.buttons[index];
+            const auto& draw = m_buttons[index];
+
+            const bool releasedOnButton =
+                mouseX >= draw.x && mouseX < draw.x + draw.width &&
+                mouseY >= draw.y && mouseY < draw.y + draw.height;
+
+            if (releasedOnButton && button.enabled)
+                std::cout << "Bouton clique : " << button.text << '\n';
+
+            HandleMouseMove(mouseX, mouseY);
         }
 
     private:
@@ -249,12 +350,12 @@ export namespace Pumpkin::UI
 
             // Stabilise les chaînes avant de créer les objets Text,
             // car Pumpkin::Text conserve un const char*.
-            m_contents.reserve(uiTexts.size());
+            m_contents.reserve(uiTexts.size() + m_ui.storage.buttons.size());
 
             for (const auto& uiText : uiTexts)
                 m_contents.push_back(uiText.content);
 
-            m_texts.reserve(uiTexts.size());
+            m_texts.reserve(uiTexts.size() + m_ui.storage.buttons.size());
 
             for (std::size_t i = 0; i < uiTexts.size(); ++i)
             {
@@ -291,6 +392,61 @@ export namespace Pumpkin::UI
             }
         }
 
+        void BuildButtons()
+        {
+            m_buttons.reserve(m_ui.storage.buttons.size());
+
+            for (const auto& button : m_ui.storage.buttons)
+            {
+                m_buttonIndices.emplace(button.id, m_buttons.size());
+                m_buttons.push_back(UIButtonDraw{
+                    .color = button.normalColor
+                });
+            }
+        }
+
+        void BuildButtonTexts()
+        {
+            if (m_ui.storage.buttons.empty())
+                return;
+
+            if (m_fonts.empty())
+                throw std::runtime_error(
+                    "Aucune police disponible pour les boutons UI."
+                );
+
+            TTF_Font* font = m_fonts.begin()->second;
+
+            for (const auto& button : m_ui.storage.buttons)
+                m_contents.push_back(button.text);
+
+            for (std::size_t i = 0;
+                 i < m_ui.storage.buttons.size();
+                 ++i)
+            {
+                const auto& button = m_ui.storage.buttons[i];
+
+                m_texts.emplace_back(
+                    font,
+                    m_contents[m_ui.storage.texts.size() + i].c_str(),
+                    24.0f,
+                    SDL_Color{255, 255, 255, 255},
+                    0,
+                    0
+                );
+
+                if (!m_texts.back().surface)
+                    throw std::runtime_error(
+                        "Impossible de generer le texte d'un bouton UI."
+                    );
+
+                m_buttonTextIndices.emplace(
+                    button.id,
+                    m_texts.size() - 1
+                );
+            }
+        }
+
         LoadedUI& m_ui;
 
         std::unordered_map<Pumpkin::UI::FontId, TTF_Font*> m_fonts;
@@ -300,5 +456,11 @@ export namespace Pumpkin::UI
         std::unordered_map<Pumpkin::UI::TextureId, Pumpkin::Texture> m_textures;
         std::vector<Pumpkin::UIImageDraw> m_images;
         std::unordered_map<Pumpkin::UI::ElementId, std::size_t> m_imageIndices;
+        std::vector<UIButtonDraw> m_buttons;
+        std::unordered_map<Pumpkin::UI::ElementId, std::size_t> m_buttonIndices;
+        std::unordered_map<Pumpkin::UI::ElementId, std::size_t> m_buttonTextIndices;
+        std::optional<std::size_t> m_pressedButton;
     };
+
+
 }

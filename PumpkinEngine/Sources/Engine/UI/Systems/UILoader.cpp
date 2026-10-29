@@ -136,45 +136,47 @@ namespace
     }
 
     std::array<std::uint8_t, 4> ReadColor(
-        const Node& node,
-        std::array<std::uint8_t, 4> defaultColor)
+    const Node& node,
+    const std::string& key,
+    std::array<std::uint8_t, 4> defaultColor)
     {
-        const Node* color = node.Find("color");
+        const Node* color = node.Find(key);
 
         if (color == nullptr)
-        {
             return defaultColor;
-        }
 
         if (color->type != NodeType::Sequence ||
             color->sequence.size() != 4)
         {
             throw std::runtime_error(
-                "Une couleur doit contenir quatre composantes RGBA.");
+                "La couleur '" + key +
+                "' doit contenir quatre composantes RGBA.");
         }
 
         for (std::size_t i = 0; i < 4; ++i)
         {
             if (color->sequence[i].type != NodeType::Scalar)
-            {
                 throw std::runtime_error(
-                    "Composante de couleur invalide.");
-            }
+                    "Composante invalide pour la couleur '" + key + "'.");
 
-            const int component =
-                std::stoi(color->sequence[i].value);
+            const int component = std::stoi(color->sequence[i].value);
 
             if (component < 0 || component > 255)
-            {
                 throw std::runtime_error(
-                    "Une composante RGBA doit etre comprise entre 0 et 255.");
-            }
+                    "Les composantes RGBA doivent etre comprises entre 0 et 255.");
 
-            defaultColor[i] =
-                static_cast<std::uint8_t>(component);
+            defaultColor[i] = static_cast<std::uint8_t>(component);
         }
 
         return defaultColor;
+    }
+
+    // Conserve la lecture actuelle des images et des textes.
+    std::array<std::uint8_t, 4> ReadColor(
+        const Node& node,
+        std::array<std::uint8_t, 4> defaultColor)
+    {
+        return ReadColor(node, "color", defaultColor);
     }
 
     template<typename T>
@@ -340,6 +342,29 @@ namespace Pumpkin::UI
                 result.storage.transformEntities.push_back(id);
                 result.storage.transforms.push_back(transform);
                 result.storage.texts.push_back(std::move(text));
+            }
+            else if (type == "Button")
+            {
+                Button button;
+                button.id = id;
+                button.text = ReadString(element, "text");
+
+                button.normalColor = ReadColor(
+                    element, "normalColor", {70, 70, 70, 255});
+
+                button.hoveredColor = ReadColor(
+                    element, "hoveredColor", {100, 100, 100, 255});
+
+                button.pressedColor = ReadColor(
+                    element, "pressedColor", {45, 45, 45, 255});
+
+                button.disabledColor = ReadColor(
+                    element, "disabledColor", {35, 35, 35, 180});
+
+                result.storage.buttons.push_back(button);
+
+                result.storage.transformEntities.push_back(id);
+                result.storage.transforms.push_back(transform);
             }
             else
             {

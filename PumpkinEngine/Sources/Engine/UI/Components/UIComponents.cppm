@@ -58,6 +58,43 @@ export namespace Pumpkin::UI
         std::array<std::uint8_t, 4> color{255, 255, 255, 255};
     };
 
+
+    enum class ButtonState : std::uint8_t
+    {
+        Normal,
+        Hovered,
+        Pressed,
+        Disabled
+    };
+
+    struct Button
+    {
+        ElementId id = 0;
+
+        std::string text;
+
+        std::array<std::uint8_t, 4> normalColor{70, 70, 70, 255};
+        std::array<std::uint8_t, 4> hoveredColor{100, 100, 100, 255};
+        std::array<std::uint8_t, 4> pressedColor{45, 45, 45, 255};
+        std::array<std::uint8_t, 4> disabledColor{35, 35, 35, 180};
+
+        ButtonState state = ButtonState::Normal;
+        bool enabled = true;
+    };
+
+    struct UIButtonDraw
+    {
+        int x = 0;
+        int y = 0;
+        int width = 0;
+        int height = 0;
+        float scale = 1.0f;
+
+        std::array<std::uint8_t, 4> color{
+            70, 70, 70, 255
+        };
+    };
+
     struct UIStorage
     {
         std::vector<ElementId> transformEntities;
@@ -65,5 +102,6 @@ export namespace Pumpkin::UI
 
         std::vector<Image> images;
         std::vector<Text> texts;
+        std::vector<Button> buttons;
     };
 }

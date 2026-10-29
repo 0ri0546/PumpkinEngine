@@ -12,6 +12,7 @@ import Pumpkin.Renderer.Passes.Particle;
 import Pumpkin.Renderer.Passes.Skybox;
 import Pumpkin.Renderer.Passes.Text;
 import Pumpkin.Renderer.Passes.Image;
+import Pumpkin.Renderer.Passes.Button;
 import Pumpkin.Renderer.Renderer;
 import Pumpkin.Renderer.RenderPass;
 import Pumpkin.Renderer.TerrainBatcher;
@@ -251,6 +252,7 @@ int main() {
             renderer.AddPass<ParticlePass>(particleSystem, particleSystem2);
             renderer.AddPass<GeometryPass>();
             renderer.AddPass<OutlinePass>(0.03f);
+            renderer.AddPass<ButtonPass>(uiRenderer.Buttons());
             renderer.AddPass<ImagePass>(uiRenderer.Images());
             auto& textPass = renderer.AddPass<TextPass>(uiRenderer.Texts());
 
@@ -358,6 +360,33 @@ int main() {
                     case SDL_EVENT_KEY_DOWN:
                         if (event.key.key == SDLK_V && !event.key.repeat)
                             vertexEffect.enabled = !vertexEffect.enabled;
+                        break;
+
+                    case SDL_EVENT_MOUSE_MOTION:
+                        uiRenderer.HandleMouseMove(
+                            static_cast<int>(event.motion.x),
+                            static_cast<int>(event.motion.y)
+                        );
+                        break;
+
+                    case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                        if (event.button.button == SDL_BUTTON_LEFT)
+                        {
+                            uiRenderer.HandleMouseButtonDown(
+                                static_cast<int>(event.button.x),
+                                static_cast<int>(event.button.y)
+                            );
+                        }
+                        break;
+
+                    case SDL_EVENT_MOUSE_BUTTON_UP:
+                        if (event.button.button == SDL_BUTTON_LEFT)
+                        {
+                            uiRenderer.HandleMouseButtonUp(
+                                static_cast<int>(event.button.x),
+                                static_cast<int>(event.button.y)
+                            );
+                        }
                         break;
 
                     default:
