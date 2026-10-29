@@ -1,0 +1,25 @@
+# Minimal Doxygen settings for the Pumpkin engine documentation style.
+# Usage: doxygen Doxyfile
+
+PROJECT_NAME           = "Pumpkin Engine"
+INPUT                  = ./PumpkinEngine/Sources
+RECURSIVE              = YES
+FILE_PATTERNS          = *.cppm *.cpp *.inl *.hpp
+EXTENSION_MAPPING      = cppm=C++
+OPTIMIZE_OUTPUT_FOR_C  = NO
+CPP_CLI_SUPPORT        = NO
+OUTPUT_DIRECTORY       = Docs
+
+# Doxygen does not understand `export` / module declarations: strip them.
+ENABLE_PREPROCESSING   = YES
+MACRO_EXPANSION        = YES
+EXPAND_ONLY_PREDEF     = YES
+PREDEFINED             = "export=" "PUMPKIN_API=" "PUMPKIN_ENGINE_BUILD"
+
+# Custom tags used in the comments
+ALIASES += "thread_safety=\par Thread safety:^^"
+ALIASES += "complexity=\par Complexity:^^"
+
+EXTRACT_ALL            = NO
+EXTRACT_PRIVATE        = YES
+GENERATE_LATEX         = NO
