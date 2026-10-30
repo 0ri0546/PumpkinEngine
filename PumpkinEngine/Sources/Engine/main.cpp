@@ -58,7 +58,7 @@ namespace {
             .noiseOctaves = 4,
             .persistence = 0.5f,
             .lacunarity = 2.0f,
-            .seed = 0,
+            .seed = 7,
             .waterLevel = 0.20f,
             .sandLevel = 0.35f,
             .grassLevel = 0.35f,
@@ -224,6 +224,13 @@ int main() {
                 .animatedWaterWave = true
             };
 
+            Mesh treeMesh = GeneratePineTrees(terrainConfig, 150);
+            Mat4f treeModel = Mat4f::Identity();
+
+            Material treeMaterial{
+                .shader = ShaderId::BlinnPhong
+            };
+
             // Particles
             auto particleSystem =
                 std::make_shared<ParticleSystem>(MakeSnowParticles());
@@ -288,7 +295,12 @@ int main() {
                     .mesh = &vkRoomObj,
                     .model = &vkRoomModel,
                     .material = &vkRoomMaterial
-                }
+                },
+                DrawItem{
+                    .mesh = &treeMesh,
+                    .model = &treeModel,
+                    .material = &treeMaterial
+                },
             };
 
             // Main loop

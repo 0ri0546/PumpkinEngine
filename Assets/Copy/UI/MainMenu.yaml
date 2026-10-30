@@ -13,154 +13,31 @@ fonts:
     size: 16
 
 elements:
-  - type: Button
-    id: play_button
-    anchor: center
-    position: { x: 0, y: 10 }
-    size: { width: 240, height: 60 }
-    text: "JOUER"
-    normalColor: [70, 70, 70, 255]
-    hoveredColor: [100, 100, 100, 255]
-    pressedColor: [45, 45, 45, 255]
-    disabledColor: [35, 35, 35, 180]
-
+  # Logo en haut au centre
   - type: Image
     id: hud_logo
     texture: logo
+    anchor: top-right
+    position: { x: -10, y: 0 }
+    size: { width: 120, height: 120 }
+
+  # Texte d'ambiance
+  - type: Text
+    id: game_title
+    text: "KINGDOM OF PUMPKIN"
+    font: arial
+    color: [245, 235, 215, 255]
     anchor: top-center
     position: { x: 0, y: 0 }
-    size: { width: 160, height: 80 }
 
-  # Nom de la région
-  - type: Text
-    id: region_name
-    text: "Kingdom of Pumpkin"
-    font: arial
-    color: [235, 215, 175, 255]
-    anchor: top-center
-    position: { x: 15, y: 3 }
-
-  - type: Text
-    id: season
-    text: "Autumn - year 1"
-    font: arial
-    color: [205, 195, 170, 255]
-    anchor: top-center
-    position: { x: 15, y: 5 }
-
-  # Ressources : haut gauche
-  - type: Text
-    id: resources_title
-    text: "Resources"
-    font: arial
-    color: [235, 215, 175, 255]
+  # Bouton principal
+  - type: Button
+    id: play_button
     anchor: top-left
-    position: { x: 1, y: 3 }
-
-  - type: Text
-    id: resource_wood
-    text: "Wood       125"
-    font: arial
-    color: [225, 220, 205, 255]
-    anchor: top-left
-    position: { x: 1.5625, y: 6.9444 }
-
-  - type: Text
-    id: resource_stone
-    text: "Stone        68"
-    font: arial
-    color: [225, 220, 205, 255]
-    anchor: top-left
-    position: { x: 1.5625, y: 10.1852 }
-
-  - type: Text
-    id: resource_food
-    text: "Food         240"
-    font: arial
-    color: [225, 220, 205, 255]
-    anchor: top-left
-    position: { x: 1.5625, y: 13.4259 }
-
-  - type: Text
-    id: resource_gold
-    text: "Treasury    520"
-    font: arial
-    color: [235, 205, 125, 255]
-    anchor: top-left
-    position: { x: 1.5625, y: 16.6667 }
-
-  # Population : haut droite
-  - type: Text
-    id: population_title
-    text: "Settlement"
-    font: arial
-    color: [235, 215, 175, 255]
-    anchor: top-right
-    position: { x: -1.5625, y: 3.2407 }
-
-  - type: Text
-    id: population
-    text: "Population   86"
-    font: arial
-    color: [225, 220, 205, 255]
-    anchor: top-right
-    position: { x: -1.5625, y: 6.9444 }
-
-  - type: Text
-    id: happiness
-    text: "Approval       78%"
-    font: arial
-    color: [180, 215, 165, 255]
-    anchor: top-right
-    position: { x: -1.5625, y: 10.1852 }
-
-  - type: Text
-    id: provisions
-    text: "Provisions   12 MONTHS"
-    font: arial
-    color: [225, 220, 205, 255]
-    anchor: top-right
-    position: { x: -1.5625, y: 13.4259 }
-
-  # Objectif courant : bas gauche
-  - type: Text
-    id: objective_title
-    text: "Current objective"
-    font: arial
-    color: [235, 215, 175, 255]
-    anchor: bottom-left
-    position: { x: 1.5625, y: -10.6481 }
-
-  - type: Text
-    id: objective
-    text: "Build a woodcutters's camp"
-    font: arial
-    color: [225, 220, 205, 255]
-    anchor: bottom-left
-    position: { x: 1.5625, y: -6.9444 }
-
-  # Commandes : bas centre
-  - type: Text
-    id: controls
-    text: "[ B ] Build     [ M ] Map     [ T ] Town"
-    font: arial
-    color: [215, 205, 180, 255]
-    anchor: bottom-center
-    position: { x: 0, y: -3.2407 }
-
-  # Indication de vitesse : bas droite
-  - type: Text
-    id: game_speed
-    text: "II  Paused"
-    font: arial
-    color: [235, 215, 175, 255]
-    anchor: bottom-right
-    position: { x: -1.5625, y: -6.9444 }
-
-  - type: Text
-    id: engine_credit
-    text: "Pumpkin engine"
-    font: arial
-    color: [140, 135, 125, 255]
-    anchor: bottom-right
-    position: { x: -1.5625, y: -3.2407 }
+    position: { x: 3, y: 3 }
+    size: { width: 260, height: 65 }
+    text: "JOUER"
+    normalColor: [35, 35, 35, 220]
+    hoveredColor: [75, 75, 75, 245]
+    pressedColor: [20, 20, 20, 255]
+    disabledColor: [35, 35, 35, 180]

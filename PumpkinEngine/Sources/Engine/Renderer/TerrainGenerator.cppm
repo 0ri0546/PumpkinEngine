@@ -54,6 +54,11 @@ export namespace Pumpkin {
     // The whole terrain as a single mesh.
     [[nodiscard]] Mesh PUMPKIN_API GenerateTerrain(const TerrainConfig& config = {});
 
+    [[nodiscard]] Mesh PUMPKIN_API GeneratePineTrees(
+        const TerrainConfig& config,
+        int treeCount = 100
+    );
+
     // The same terrain split into chunkCells x chunkCells patches
     [[nodiscard]] std::vector<TerrainChunk> PUMPKIN_API GenerateTerrainChunks(
         const TerrainConfig& config,

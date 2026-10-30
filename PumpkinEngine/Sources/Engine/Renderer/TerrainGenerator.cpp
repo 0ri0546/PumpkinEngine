@@ -252,6 +252,228 @@ namespace Pumpkin {
         return chunks;
     }
 
+    Mesh GeneratePineTrees(const TerrainConfig& config, int treeCount)
+    {
+        Validate(config);
+
+        const Grid grid(config);
+        const auto heights = BuildHeights(config, grid);
+
+        Mesh mesh{};
+        if (treeCount <= 0)
+            return mesh;
+
+        constexpr Color trunkColor{ 145, 100, 65, 255 };
+
+        std::mt19937 rng(config.seed + 12345u);
+
+        auto emitTriangle = [&](Vec3f a, Vec3f b, Vec3f c, Color color)
+        {
+            const Vec3f ab = b - a;
+            const Vec3f ac = a - c;
+
+            Vec3f normal{
+                ab[1] * ac[2] - ab[2] * ac[1],
+                ab[2] * ac[0] - ab[0] * ac[2],
+                ab[0] * ac[1] - ab[1] * ac[0]
+            };
+
+            const float dot =
+                normal[0] * normal[0] +
+                normal[1] * normal[1] +
+                normal[2] * normal[2];
+
+            if (dot < 0.0f)
+            {
+                std::swap(b, c);
+
+                normal = {
+                    -normal[0],
+                    -normal[1],
+                    -normal[2]
+                };
+            }
+
+            const float length = std::sqrt(
+                normal[0] * normal[0] +
+                normal[1] * normal[1] +
+                normal[2] * normal[2]);
+
+            if (length <= 0.00001f)
+                return;
+
+            normal[0] /= length;
+            normal[1] /= length;
+            normal[2] /= length;
+
+            const auto base =
+                static_cast<std::uint32_t>(mesh.vertices.size());
+
+            for (const Vec3f* p : { &c, &b, &a })
+            {
+                mesh.vertices.emplace_back(
+                    Vec4f{ (*p)[0], (*p)[1], (*p)[2], 1.0f },
+                    Vec2f{},
+                    normal
+                );
+
+                mesh.colors.push_back(color);
+            }
+
+            mesh.indices.insert(
+                mesh.indices.end(),
+                { base, base + 1, base + 2 });
+        };
+
+        // Sample the same height field used to generate the terrain.
+        auto getHeight = [&](float x, float z)
+        {
+            const float gx = std::clamp(
+                (x - grid.startX) / grid.stepX,
+                0.0f, static_cast<float>(config.cellsX));
+
+            const float gz = std::clamp(
+                (z - grid.startZ) / grid.stepZ,
+                0.0f, static_cast<float>(config.cellsZ));
+
+            const int x0 = std::min(
+                static_cast<int>(gx), config.cellsX - 1);
+            const int z0 = std::min(
+                static_cast<int>(gz), config.cellsZ - 1);
+
+            const float tx = gx - x0;
+            const float tz = gz - z0;
+
+            const auto at = [&](int ix, int iz)
+            {
+                return heights[
+                    static_cast<std::size_t>(iz) * grid.vx + ix];
+            };
+
+            const float h0 = at(x0, z0) * (1.0f - tx)
+                           + at(x0 + 1, z0) * tx;
+            const float h1 = at(x0, z0 + 1) * (1.0f - tx)
+                           + at(x0 + 1, z0 + 1) * tx;
+
+            return h0 * (1.0f - tz) + h1 * tz;
+        };
+
+        std::uniform_real_distribution<float> posX(
+            grid.startX + 1.0f, -grid.startX - 1.0f);
+        std::uniform_real_distribution<float> posZ(
+            grid.startZ + 1.0f, -grid.startZ - 1.0f);
+        std::uniform_real_distribution<float> heightScale(0.3f, 0.9f);
+        std::uniform_real_distribution<float> widthScale(0.5f, 0.8f);
+
+        constexpr int sides = 5;
+
+        for (int i = 0; i < treeCount; ++i)
+        {
+            const float x = posX(rng);
+            const float z = posZ(rng);
+            const float ground = getHeight(x, z);
+
+            const float normalizedHeight = std::clamp(
+                (ground - config.minHeight) /
+                (config.maxHeight - config.minHeight),
+                0.0f, 1.0f
+            );
+
+            const bool isSnow = normalizedHeight >= config.snowLevel;
+
+            const Color foliageColor = isSnow
+                ? Color{ 255, 255, 255, 255 }
+            : Color{ 135, 220, 100, 255 };
+
+            // Low-frequency noise defines broad forest regions.
+            constexpr float forestNoiseScale = 0.5f;
+            constexpr float forestThreshold = 0.01f;
+
+            const float forestNoise =
+                FractalNoise(x, z, config, forestNoiseScale);
+
+            if (forestNoise < forestThreshold)
+                continue;
+
+            // Keep trees on land, above the water level.
+            if (ground <= config.waterLevel + 0.15f)
+                continue;
+
+            const float scaleH = heightScale(rng);
+            const float scaleW = widthScale(rng);
+
+            const float trunkHeight = 0.7f * scaleH;
+            const float trunkRadius = 0.12f * scaleW;
+
+            const Vec3f base{x, ground, z};
+            const Vec3f top{x, ground + trunkHeight, z};
+
+            // Trunk: low-poly cylinder.
+            for (int s = 0; s < sides; ++s)
+            {
+                const float a0 = 2.0f * std::numbers::pi_v<float>
+                               * s / sides;
+                const float a1 = 2.0f * std::numbers::pi_v<float>
+                               * (s + 1) / sides;
+
+                const Vec3f p0{
+                    x + std::cos(a0) * trunkRadius,
+                    ground,
+                    z + std::sin(a0) * trunkRadius
+                };
+                const Vec3f p1{
+                    x + std::cos(a1) * trunkRadius,
+                    ground,
+                    z + std::sin(a1) * trunkRadius
+                };
+                const Vec3f p2{
+                    p1[0], ground + trunkHeight, p1[2]
+                };
+                const Vec3f p3{
+                    p0[0], ground + trunkHeight, p0[2]
+                };
+
+                emitTriangle(p0, p1, p2, trunkColor);
+                emitTriangle(p0, p2, p3, trunkColor);
+            }
+
+            // Three overlapping conical layers of foliage.
+            for (int layer = 0; layer < 3; ++layer)
+            {
+                const float layerBase =
+                    ground + trunkHeight + layer * 0.45f * scaleH;
+                const float radius =
+                    (0.65f - layer * 0.15f) * scaleW;
+                const float tipY = layerBase + 0.8f * scaleH;
+
+                const Vec3f tip{x, tipY, z};
+
+                for (int s = 0; s < sides; ++s)
+                {
+                    const float a0 = 2.0f * std::numbers::pi_v<float>
+                                   * s / sides;
+                    const float a1 = 2.0f * std::numbers::pi_v<float>
+                                   * (s + 1) / sides;
+
+                    const Vec3f p0{
+                        x + std::cos(a0) * radius,
+                        layerBase,
+                        z + std::sin(a0) * radius
+                    };
+                    const Vec3f p1{
+                        x + std::cos(a1) * radius,
+                        layerBase,
+                        z + std::sin(a1) * radius
+                    };
+
+                    emitTriangle(p0, p1, tip, foliageColor);
+                }
+            }
+        }
+
+        return mesh;
+    }
+
     Mesh GenerateWater(const TerrainConfig& config) {
         Validate(config);
 
