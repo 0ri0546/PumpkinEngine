@@ -159,6 +159,11 @@ namespace Pumpkin {
                         V::store(zs, vz);
 
                         const V::type tu = V::mul(vu, inv), tv = V::mul(vv, inv);
+                        alignas(32) float tuLane[kLanes];
+                        alignas(32) float tvLane[kLanes];
+
+                        V::store(tuLane, tu);
+                        V::store(tvLane, tv);
                         const V::type two = V::set1(2.0f), one1 = V::set1(1.0f);
 
                         BilinearCoords shared{};
@@ -246,7 +251,12 @@ namespace Pumpkin {
 
                             frag.x = x + lane;
                             frag.depth = zs[lane];
-                            frag.b0 = b0[lane]; frag.b1 = b1[lane]; frag.b2 = b2[lane];
+                            frag.b0 = b0[lane];
+                            frag.b1 = b1[lane];
+                            frag.b2 = b2[lane];
+
+                            frag.u = tuLane[lane];
+                            frag.v = tvLane[lane];
 
                             frag.albedo[0] = aR[lane]; frag.albedo[1] = aG[lane];
                             frag.albedo[2] = aB[lane]; frag.albedo[3] = aA[lane];
@@ -304,6 +314,9 @@ namespace Pumpkin {
                 if (DepthPass(item.material->depthTest, z, depthRow[x])) {
                     const float inv = 1.0f / k;
                     const float tu = u * inv, tv = v * inv;
+
+                    frag.u = tu;
+                    frag.v = tv;
 
                     frag.x = x;
                     frag.depth = z;

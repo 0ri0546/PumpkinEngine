@@ -15,4 +15,7 @@ export namespace Pumpkin {
     std::vector<Color> GenerateRGBA(std::size_t count, std::uint8_t r, std::uint8_t g, std::uint8_t b, std::uint8_t a = 255);
     std::vector<Color> GenerateRandomRGB(std::size_t count);
     std::vector<Color> GenerateRandomRGBA(std::size_t count);
+
+    // Time helpers
+    float PUMPKIN_API GetEngineTime();
 }

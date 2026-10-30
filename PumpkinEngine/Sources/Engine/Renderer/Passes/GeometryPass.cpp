@@ -5,6 +5,7 @@ import Pumpkin.Renderer.Shaders;
 import Pumpkin.Renderer.Texture;
 import Pumpkin.Renderer.Transform;
 import Pumpkin.Utils.ThreadPool;
+import Pumpkin.Utils.Utils;
 import Pumpkin.Utils.RenderProfiler;
 
 import std;
@@ -43,7 +44,8 @@ namespace Pumpkin {
                 *item.model,
                 ctx.camera,
                 static_cast<float>(ctx.fb.width) / static_cast<float>(ctx.fb.height),
-                ctx.effect);
+                item.material->animatedWaterOndulation,
+                item.material->animatedWaterWave);
         }
 
         // Every vertex is outside the same plane, nothing can be visible
@@ -107,6 +109,7 @@ namespace Pumpkin {
             static PBRShader pbr{};
             static ToonShader toon{};
             static AlbedoColorShader alb{};
+            static WaterShader water{};
             switch (item.material->shader) {
             case ShaderId::VertexColor:
                 vcs = VertexColorShader {
@@ -147,6 +150,10 @@ namespace Pumpkin {
                 break;
             case ShaderId::AlbedoColor:
                 FragmentShader(m_batch, ctx, alb, item);
+                break;
+            case ShaderId::Water:
+                water.time = GetEngineTime();
+                FragmentShader(m_batch, ctx, water, item);
                 break;
             default:
                 break;

@@ -12,15 +12,6 @@ import std;
 
 export namespace Pumpkin {
 
-    /// @brief Optional animated vertex displacement, applied in model space before the MVP transform.
-    struct PUMPKIN_API VertexEffect {
-        bool enabled = true;
-        float time = 0.0f;        // seconds, advanced by the caller
-        float amplitude = 0.15f;  // max displacement along the normal, in model units
-        float frequency = 3.0f;   // wave frequency along model Y, in radians per unit
-        float speed = 2.5f;       // wave speed, in radians per second
-    };
-
     struct PUMPKIN_API Texture {
         int width = 0;
         int height = 0;
@@ -77,7 +68,8 @@ export namespace Pumpkin {
         Lambert,
 		VertexColor, 
         Toon,
-        AlbedoColor
+        AlbedoColor,
+	    Water
 	};
 
     // 8-bit color depth
@@ -105,6 +97,8 @@ export namespace Pumpkin {
         DepthTestMode depthTest = DepthTestMode::Less;
         BlendMode     blend = BlendMode::Alpha;
         bool          depthWrite = true;
+        bool          animatedWaterOndulation = false;
+        bool          animatedWaterWave = false;
     };
 
     struct PUMPKIN_API FrameBuffer {

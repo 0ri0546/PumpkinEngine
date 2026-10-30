@@ -50,4 +50,10 @@ namespace Pumpkin {
         }
         return colors;
     }
+
+    float GetEngineTime() {
+        static const auto start = std::chrono::steady_clock::now();
+        auto end = std::chrono::steady_clock::now();
+        return std::chrono::duration<float>(end - start).count();
+    }
 }

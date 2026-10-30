@@ -1,31 +1,84 @@
 module Pumpkin.Renderer.Shaders;
 
 import Pumpkin.Utils.ThreadPool;
+import Pumpkin.Utils.Utils;
 
 import std;
 
 namespace Pumpkin {
-    /// @brief Wave along the normal. Runs in model space.
-    static void ApplyVertexEffect(const VertexEffect& effect, float phase,
-        float& px, float& py, float& pz, float& nx, float& ny, float& nz) {
-        const float arg = effect.frequency * py + phase;
-        const float wave = std::sin(arg) * effect.amplitude;
-        const float slope = std::cos(arg) * effect.amplitude * effect.frequency;
+    static void ApplyVertexEffectWaterOndulation(
+        float phase,
+        float& px, float& py, float& pz,
+        float& nx, float& ny, float& nz)
+    {
+        constexpr float kAmplitude = 0.05f;
+        constexpr float kFrequency = 1.0f;
 
-        // Tilts the normal along the wave slope using the tangent that points up the surface
-        const float tx = -nx * ny, ty = 1.0f - ny * ny, tz = -nz * ny;
-        nx -= slope * tx;
-        ny -= slope * ty;
-        nz -= slope * tz;
+        const float wave1 = std::sin(
+            (px - pz * 0.7f) * kFrequency * 0.7f
+            - phase * 0.8f);
 
-        px += nx * wave;
-        py += ny * wave;
-        pz += nz * wave;
+        const float displacement =
+            kAmplitude * (wave1) * 0.5f;
+
+        py += displacement;
     }
+
+
+    static void ApplyVertexEffectWaterWave(
+        float phase,
+        float& px, float& py, float& pz,
+        float& nx, float& ny, float& nz)
+    {
+        struct Wave {
+            float dirX;
+            float dirZ;
+            float amplitude;
+            float wavelength;
+            float speed;
+            float steepness;
+        };
+
+        constexpr Wave waves[] = {
+            {  -1.0f,  -0.7f, 0.08f, 3.5f, 0.7f, 0.45f }
+        };
+
+        float dx = 0.0f;
+        float dy = 0.0f;
+        float dz = 0.0f;
+
+        constexpr float twoPi = std::numbers::pi_v<float> * 2.0f;
+
+        for (const Wave& wave : waves) {
+            const float dirLength = std::sqrt(
+                wave.dirX * wave.dirX +
+                wave.dirZ * wave.dirZ);
+
+            const float dirX = wave.dirX / dirLength;
+            const float dirZ = wave.dirZ / dirLength;
+
+            const float k = twoPi / wave.wavelength;
+            const float theta =
+                k * (dirX * px + dirZ * pz)
+                - phase * wave.speed;
+
+            const float s = std::sin(theta);
+            const float c = std::cos(theta);
+
+            dx += wave.steepness * wave.amplitude * dirX * c;
+            dy += wave.amplitude * s;
+            dz += wave.steepness * wave.amplitude * dirZ * c;
+        }
+
+        px += dx;
+        py += dy;
+        pz += dz;
+    }
+
 
     ClipFlags VertexShader(std::span<const Vertex> vertices, std::vector<Vertex>& out,
                    ClipInfo& info, const Mat4f& model, const Camera& camera, float aspectRatio,
-                   const VertexEffect& effect)
+                   bool animatedWaterOndulation, bool animatedWaterWave)
     {
         out.resize(vertices.size());
         info.codes.Reserve(vertices.size());
@@ -39,7 +92,8 @@ namespace Pumpkin {
         const Mat4f mvp       = projection * viewModel;
 
         // Per-call constants of the effect.
-        const float phase      = effect.time * effect.speed;
+        constexpr float speed = 2.0f;
+        const float phase      = GetEngineTime() * speed;
 
         std::atomic<std::uint32_t> andCode{ 0x3F }, orCode{ 0 };
 
@@ -53,8 +107,20 @@ namespace Pumpkin {
                 float px = v.position[0], py = v.position[1], pz = v.position[2];
                 float nx = v.normal[0],   ny = v.normal[1],   nz = v.normal[2];
 
-                if (effect.enabled)
-                    ApplyVertexEffect(effect, phase, px, py, pz, nx, ny, nz);
+                if (animatedWaterOndulation) {
+                    ApplyVertexEffectWaterOndulation(
+                        phase / 1.5f,
+                        px, py, pz,
+                        nx, ny, nz
+                    );
+                }
+                if (animatedWaterWave) {
+                    ApplyVertexEffectWaterWave(
+                    phase / 1.5f,
+                    px, py, pz,
+                    nx, ny, nz
+                    );
+                }
 
                 o.position = mvp * Vec4f{ px, py, pz, v.position[3] };
 

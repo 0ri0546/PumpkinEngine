@@ -58,7 +58,7 @@ namespace {
             .noiseOctaves = 4,
             .persistence = 0.5f,
             .lacunarity = 2.0f,
-            .seed = 727,
+            .seed = 0,
             .waterLevel = 0.20f,
             .sandLevel = 0.35f,
             .grassLevel = 0.35f,
@@ -107,6 +107,7 @@ namespace {
 
 int main() {
     // Pumpkin::UI::YAML::TestParser();
+    GetEngineTime();
     Pumpkin::UI::TestUILoader();
 
     if (!SDL_Init(SDL_INIT_VIDEO)) {
@@ -147,7 +148,7 @@ int main() {
         }
 
         constexpr SDL_WindowFlags windowFlags =
-            SDL_WINDOW_RESIZABLE | SDL_WINDOW_TRANSPARENT;
+            SDL_WINDOW_RESIZABLE;
 
         SDL_Window* window =
             SDL_CreateWindow("Pumpkin Engine", fb->width, fb->height, windowFlags);
@@ -200,7 +201,8 @@ int main() {
                 .albedo = &vkRoomAlbedo,
                 .normal = &vkRoomNormal,
                 .orm = &vkRoomORM,
-                .shader = ShaderId::PBR
+                .shader = ShaderId::PBR,
+                .animatedWaterWave = true
             };
 
             // Terrain and water
@@ -212,10 +214,14 @@ int main() {
             Mat4f waterModel = Mat4f::Identity();
 
             Material terrainMaterial{
-                .shader = ShaderId::Lambert
+                .shader = ShaderId::Lambert,
+                .animatedWaterOndulation = false
             };
             Material waterMaterial{
-                .shader = ShaderId::VertexColor
+                .baseColor = Color{ 35, 145, 220, 127 },
+                .shader = ShaderId::Water,
+                .animatedWaterOndulation = false,
+                .animatedWaterWave = true
             };
 
             // Particles
@@ -285,8 +291,6 @@ int main() {
                 }
             };
 
-            VertexEffect vertexEffect {};
-
             // Main loop
             const auto frameTime =
                 std::chrono::nanoseconds(1'000'000'000 / targetFps);
@@ -324,8 +328,7 @@ int main() {
                     .camera = camera,
                     .deltaTime = deltaTime,
                     .scene = scene,
-                    .toonMask = toon,
-                    .effect = vertexEffect
+                    .toonMask = toon
                 };
 
                 HandleEvents(
@@ -339,7 +342,6 @@ int main() {
                     uiRenderer,
                     textPass,
                     ctx,
-                    vertexEffect,
                     toon,
                     windowDims
                 );
@@ -368,7 +370,6 @@ int main() {
                 const Mat4f viewModel = view * terrainModel;
                 terrain.Update(projection * viewModel);
 
-                vertexEffect.time += deltaTime;
                 renderer.Render(ctx);
                 SDL_UpdateWindowSurface(window);
 
@@ -378,7 +379,7 @@ int main() {
                 if (now - lastFpsUpdate >= 1000) {
                     SDL_SetWindowTitle(
                         window,
-                        std::format("Pumpkin Engine | FPS: {}", frames).c_str()
+                        std::format("Pumpkin Engine | FPS: {} | Avg: {:.3f}ms", frames, 1000.0f / static_cast<float>(frames)).c_str()
                     );
 
                     frames = 0;

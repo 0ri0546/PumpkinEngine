@@ -70,4 +70,6 @@ export namespace Pumpkin {
         float maxHeight,
         float relativeLevel
     );
+
+    std::vector<Vec4f> waves;
 }

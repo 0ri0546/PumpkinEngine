@@ -25,7 +25,6 @@ export namespace Pumpkin {
         float         deltaTime{};
         std::span<DrawItem> scene;
         std::vector<std::uint8_t>& toonMask; // for tooning, only saves tooned materials data
-        const VertexEffect& effect;
     };
 
     class PUMPKIN_API RenderPass {

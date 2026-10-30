@@ -64,7 +64,8 @@ export namespace Pumpkin {
         const Mat4f& model,
         const Camera& camera,
         float aspectRatio,
-        const VertexEffect& effect = {});
+        bool animatedWater = false,
+        bool animatedWaterWave = false);
 
     template <FragmentShader_T Shader>
     void FragmentShader(

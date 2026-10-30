@@ -10,6 +10,8 @@ export namespace Pumpkin {
     /// @brief What the rasterizer knows about one covered pixel. This is the shader's input.
     struct FragmentInput {
         int x = 0, y = 0;
+        float u = 0.0f;
+        float v = 0.0f;
         float depth = 0.0f;
         float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f;       // perspective-correct barycentric weights (sum = 1)
         std::uint32_t i0 = 0, i1 = 0, i2 = 0;        // vertex indices of the triangle
@@ -83,6 +85,26 @@ export namespace Pumpkin {
                 f.albedo[1] * 255.0f,
                 f.albedo[2] * 255.0f,
                 f.albedo[3] * 255.0f
+            };
+        }
+    };
+
+    struct WaterShader {
+        float time = 0.0f;
+        float frequency = 1.0f;
+        float speed = 2.0f;
+
+        [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
+            const float wave1 = std::sin((f.u + f.v * 0.7f) * frequency + time * speed);
+
+            const float wave = (wave1) / 3.0f;
+            const float intensity = 0.5f + 0.5f * wave;
+
+            return {
+                5.0f + intensity * 15.0f,
+                45.0f + intensity * 65.0f,
+                100.0f + intensity * 100.0f,
+                185.0f
             };
         }
     };

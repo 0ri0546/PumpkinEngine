@@ -9,7 +9,7 @@ import std;
 namespace Pumpkin {
     namespace {
         // Biome colors
-        constexpr Color Water{ 35, 145, 220, 255 };
+        constexpr Color Water{ 35, 145, 220, 127 };
         constexpr Color Sand{ 230, 210, 145, 255 };
         constexpr Color Grass{ 100, 190, 75, 255 };
         constexpr Color Rock{ 125, 115, 105, 255 };
@@ -267,8 +267,13 @@ namespace Pumpkin {
         const auto AddWaterTriangle = [&](const Point& a, const Point& b, const Point& c) {
             const auto base = static_cast<std::uint32_t>(mesh.vertices.size());
             for (const Point* p : { &a, &b, &c }) {
-                mesh.vertices.emplace_back(Vec4f{ p->x, waterY, p->z, 1.0f },
-                                           Vec2f{}, Vec3f{ 0.0f, 1.0f, 0.0f });
+
+                mesh.vertices.emplace_back(
+                    Vec4f{ p->x, waterY, p->z, 1.0f },
+                    Vec2f{ p->x, p->z },
+                    Vec3f{ 0.0f, 1.0f, 0.0f }
+                );
+
                 mesh.colors.push_back(Water);
             }
             mesh.indices.insert(mesh.indices.end(), { base, base + 1, base + 2 });

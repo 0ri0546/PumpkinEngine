@@ -33,7 +33,6 @@ export namespace Pumpkin {
         typename UIRendererType,
         typename TextPassType,
         typename RenderContextType,
-        typename VertexEffectType,
         typename ToonType,
         typename WindowDimsType
     >
@@ -48,7 +47,6 @@ export namespace Pumpkin {
         UIRendererType& uiRenderer,
         TextPassType& textPass,
         RenderContextType& ctx,
-        VertexEffectType& vertexEffect,
         ToonType& toon,
         WindowDimsType& windowDims
     ) {
@@ -88,12 +86,6 @@ export namespace Pumpkin {
                     windowDims[1],
                     ctx
                 );
-                break;
-
-            case SDL_EVENT_KEY_DOWN:
-                if (event.key.key == SDLK_V && !event.key.repeat) {
-                    vertexEffect.enabled = !vertexEffect.enabled;
-                }
                 break;
 
             case SDL_EVENT_MOUSE_MOTION:
