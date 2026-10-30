@@ -1,6 +1,27 @@
 add_library(PumpkinEngine SHARED)
 add_executable(PumpkinRuntime main.cpp)
 
+if(MSVC)
+    set(PUMPKIN_COMPILE_FLAGS /arch:AVX2 /GL /Oi)
+
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        list(APPEND PUMPKIN_COMPILE_FLAGS /O2)
+    endif()
+
+    set(PUMPKIN_LINK_FLAGS /LTCG)
+else()
+    set(PUMPKIN_COMPILE_FLAGS -mavx2 -mfma)
+
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        list(APPEND PUMPKIN_COMPILE_FLAGS -O2)
+    endif()
+
+    set(PUMPKIN_LINK_FLAGS -flto)
+endif()
+
+add_compile_options(${PUMPKIN_COMPILE_FLAGS})
+add_link_options(${PUMPKIN_LINK_FLAGS})
+
 set_target_properties(PumpkinEngine PROPERTIES OUTPUT_NAME PumpkinEngine)
 set_target_properties(PumpkinEngine PROPERTIES PREFIX "")
 set_target_properties(PumpkinEngine PROPERTIES

@@ -3,13 +3,6 @@ add_executable(PumpkinTests main.cpp)
 file(GLOB_RECURSE PRIVATE_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/*.cpp)
 target_sources(PumpkinTests PRIVATE ${PRIVATE_SOURCES})
 
-if (MSVC)
-    set(PUMPKIN_SIMD_FLAGS /arch:AVX2)
-else()
-    set(PUMPKIN_SIMD_FLAGS -mavx2 -mfma)
-endif()
-target_compile_options(PumpkinTests PUBLIC ${PUMPKIN_SIMD_FLAGS})
-
 target_link_libraries(PumpkinTests PRIVATE PumpkinEngine PumpkinThirdParty GTest::gtest_main)
 
 if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")

@@ -4,6 +4,8 @@ module;
 
 module Pumpkin.Utils.ObjLoader;
 
+import Pumpkin.Utils.MappedFile;
+
 import std;
 
 namespace Pumpkin {
@@ -11,6 +13,7 @@ namespace Pumpkin {
         assert(!filepath.string().empty() && "Invalid file path!");
         assert(filepath.extension() == ".obj" && "File must be .obj!");
 
+#if 0  // 32% faster
         std::ifstream file(filepath, std::ios::binary | std::ios::ate);
         if (!file || !file.is_open())
         {
@@ -25,6 +28,18 @@ namespace Pumpkin {
             throw std::runtime_error("Failed to read file!");
         }
         buffer[size] = '\0';
+        char* ptr = buffer.data();
+        char* end = ptr + size;
+#else
+        MappedFile file(filepath.generic_string().c_str());
+        if (!file.IsOpen())
+        {
+            throw std::runtime_error("Couldn't load 3D model!");
+        }
+        std::streamsize size = file.Size();
+        char* ptr = const_cast<char*>(file.Data());
+        char* end = ptr + size;
+#endif
 
         attrib_t attribs;
         std::vector<index_t> indices;
@@ -34,9 +49,6 @@ namespace Pumpkin {
         attribs.texcoords.reserve(estimation);
         attribs.normals.reserve(estimation);
         indices.reserve((size * 2) / 5);
-
-        char* ptr = buffer.data();
-        char* end = ptr + size;
 
         auto parseFloat = [](char*& p) -> float
         {

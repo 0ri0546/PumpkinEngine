@@ -201,8 +201,7 @@ int main() {
                 .albedo = &vkRoomAlbedo,
                 .normal = &vkRoomNormal,
                 .orm = &vkRoomORM,
-                .shader = ShaderId::PBR,
-                .animatedWaterWave = true
+                .shader = ShaderId::PBR
             };
 
             // Terrain and water
