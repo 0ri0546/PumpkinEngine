@@ -1,3 +1,6 @@
+/// @file OutlinePass.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Outline.
+
 module Pumpkin.Renderer.Passes.Outline;
 
 import std;

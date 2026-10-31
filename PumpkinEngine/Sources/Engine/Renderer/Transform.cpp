@@ -1,3 +1,6 @@
+/// @file Transform.cpp
+/// @brief Implementation of Pumpkin.Renderer.Transform: AVX2 screen conversion and parallel near-plane clipping.
+
 module Pumpkin.Renderer.Transform;
 
 import Pumpkin.Utils.SIMDTraits;
@@ -8,11 +11,17 @@ import Pumpkin.Math.Vec;
 import std;
 
 namespace Pumpkin {
+    /// @brief 256-bit float SIMD traits (8 lanes).
     using V = simd_traits<float, 256>;
+    /// @brief Vertices converted per SIMD step.
     static constexpr std::size_t kLanes = V::width;
+    /// @brief Vertices per parallel work unit (ToScreen, ClipNearPlane).
     static constexpr std::size_t kVertexChunk = 16384;
 
-    // Handles vertices [begin, end). Returns false if one of them has w <= 0.
+    /// @brief Converts vertices `[begin, end)` to screen space (8 at a time with gathers, then a scalar tail).
+    /// @param src    Clip-space vertices. @param dst Output vertices. @param begin First index. @param end One past the last index.
+    /// @param width  Target width. @param height Target height.
+    /// @return false if any vertex had `w <= 0`.
     [[nodiscard]] static bool ScreenChunk(const Vertex* src, Vertex* dst,
         std::size_t begin, std::size_t end, float width, float height) {
         constexpr std::int32_t stride = 9; // floats between two positions

@@ -1,3 +1,6 @@
+/// @file ClearPass.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Clear.
+
 module Pumpkin.Renderer.Passes.Clear;
 
 import Pumpkin.Utils.ThreadPool;

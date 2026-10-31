@@ -1,3 +1,6 @@
+/// @file MeshLoader.cpp
+/// @brief Implementation of Pumpkin.Renderer.MeshLoader.
+
 module Pumpkin.Renderer.MeshLoader;
 
 import Pumpkin.Renderer.Types;
@@ -10,14 +13,17 @@ import std;
 
 namespace Pumpkin {
     namespace {
+        /// @brief `w` given to every loaded position.
         constexpr float         kDefaultVertexW = 1.0f;
+        /// @brief Marker used by the OBJ parser for an absent texcoord / normal index.
         constexpr std::uint32_t kInvalidIndex   = std::numeric_limits<std::uint32_t>::max();
 
+        /// @brief Drops the `w` of a vertex position.
         Vec3f Position3(const Vertex& vertex) {
             return Vec3f{ vertex.position[0], vertex.position[1], vertex.position[2] };
         }
 
-        // Moves the mesh to the origin and scales its largest side to targetSize.
+        /// @brief Moves the mesh's bounding-box centre to the origin and scales its largest side to @p targetSize (no-op for an empty or degenerate mesh).
         void CenterAndScale(Mesh& mesh, float targetSize) {
             if (mesh.vertices.empty()) return;
 

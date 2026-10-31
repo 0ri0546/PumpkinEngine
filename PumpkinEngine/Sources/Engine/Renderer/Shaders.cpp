@@ -1,3 +1,6 @@
+/// @file Shaders.cpp
+/// @brief Implementation of Pumpkin.Renderer.Shaders (vertex stage).
+
 module Pumpkin.Renderer.Shaders;
 
 import Pumpkin.Utils.ThreadPool;

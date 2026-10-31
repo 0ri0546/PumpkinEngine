@@ -1,3 +1,6 @@
+/// @file TerrainBatcher.cpp
+/// @brief Implementation of Pumpkin.Renderer.TerrainBatcher.
+
 module Pumpkin.Renderer.TerrainBatcher;
 
 import Pumpkin.Renderer.TerrainGenerator;
@@ -10,9 +13,11 @@ import std;
 
 namespace Pumpkin {
     namespace {
+        /// @brief Result of testing a bounding box against the frustum.
         enum class BoxVisibility { Outside, Inside, CrossesNear };
 
-        // Tests the 8 corners of a box against the frustum in clip space.
+        /// @brief Classifies a box by transforming its 8 corners to clip space.
+        /// @return Outside if all corners fail the same plane; CrossesNear if any corner is behind the near plane; Inside otherwise.
         BoxVisibility ClassifyBox(const AABB& box, const Mat4f& mvp) {
             std::uint32_t andCode = 0x3F;
             bool behindNear = false;

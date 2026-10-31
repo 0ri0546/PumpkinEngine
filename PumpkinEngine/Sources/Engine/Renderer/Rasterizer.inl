@@ -1,3 +1,6 @@
+/// @file Rasterizer.inl
+/// @brief Template definitions of Rasterizer::Rasterize and Rasterizer::DrawInTile (documented in Rasterizer.cppm).
+
 #pragma once
 
 namespace Pumpkin {

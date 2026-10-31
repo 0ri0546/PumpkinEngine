@@ -1,3 +1,6 @@
+/// @file ParticlePass.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Particle.
+
 module Pumpkin.Renderer.Passes.Particle;
 
 import Pumpkin.Renderer.Particles;

@@ -1,3 +1,6 @@
+/// @file GeometryPass.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Geometry.
+
 module Pumpkin.Renderer.Passes.Geometry;
 
 import Pumpkin.Renderer.Fragment;

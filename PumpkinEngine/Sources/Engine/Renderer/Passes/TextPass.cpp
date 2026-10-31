@@ -1,3 +1,6 @@
+/// @file TextPass.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Text.
+
 module;
 
 #include <SDL_FixedIncludes.h>

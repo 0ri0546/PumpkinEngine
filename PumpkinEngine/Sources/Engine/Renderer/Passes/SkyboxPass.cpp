@@ -1,3 +1,6 @@
+/// @file SkyboxPass.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Skybox.
+
 module Pumpkin.Renderer.Passes.Skybox;
 
 import Pumpkin.Renderer.Texture;
@@ -14,6 +17,7 @@ namespace Pumpkin {
         constexpr float Pi = std::numbers::pi_v<float>;
         constexpr float HalfPi = Pi * 0.5f;
 
+        /// @brief Fast polynomial `atan2` approximation (angle in radians, range [-pi, pi]).
         float FastAtan2(float y, float x) {
             if (x == 0.0f) {
                 if (y > 0.0f) return HalfPi;
@@ -36,6 +40,7 @@ namespace Pumpkin {
             return y < 0.0f ? -angle : angle;
         }
 
+        /// @brief Fast polynomial `asin` approximation (input clamped to [-1, 1], result in radians).
         float FastAsin(float x) {
             x = std::clamp(x, -1.0f, 1.0f);
 

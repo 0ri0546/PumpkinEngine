@@ -1,3 +1,6 @@
+/// @file ParticleSystem.cppm
+/// @brief Module Pumpkin.Renderer.ParticleSystem: CPU simulation of a continuously refilled particle emitter.
+
 module;
 
 #include <DLL/Export.hpp>
@@ -12,8 +15,16 @@ import Pumpkin.Renderer.Particles;
 
 export namespace Pumpkin {
 
+    /// @brief Simulates the particles of one emitter (integration, colour ramp, expiry, respawn).
+    ///
+    /// The system always tries to hold `Particles::maxParticles` live particles: expired ones are removed and new ones spawned
+    /// at the emitter on the same update. Rendering is done by ParticlePass.
+    ///
+    /// @thread_safety Not thread-safe; owns its random generator.
     class PUMPKIN_API ParticleSystem {
     public:
+        /// @brief Creates the system and reserves room for `maxParticles` particles.
+        /// @param settings Emitter settings (copied; they cannot be changed afterwards). No particle exists until the first Update().
         explicit ParticleSystem(Particles settings)
             : m_settings(settings) {
             m_particles.reserve(
@@ -21,6 +32,13 @@ export namespace Pumpkin {
             );
         }
 
+        /// @brief Advances the simulation.
+        ///
+        /// Ages the live particles, interpolates their colour from `colorMin` to `colorMax` over their lifetime, applies gravity to the
+        /// velocity and the velocity to the position (semi-implicit Euler), removes the expired ones, then spawns new particles until
+        /// `maxParticles` is reached.
+        ///
+        /// @param deltaTime Elapsed time in seconds. Values <= 0 are ignored (nothing is updated or spawned).
         void Update(float deltaTime) {
 
             if (deltaTime <= 0.0f)
@@ -64,12 +82,16 @@ export namespace Pumpkin {
             }
         }
 
+        /// @brief Live particles.
+        /// @return Reference valid until the next Update().
         [[nodiscard]]
         const std::vector<Particle>& GetParticles() const {
             return m_particles;
         }
 
     private:
+        /// @brief Creates one particle: random position in the spawn cube, velocity `initialVelocity + normalise(dir) * random(speedMin, speedMax)`,
+        /// random lifetime in [minDuration, maxDuration], colour `colorMin`.
         void Spawn() {
             Particle particle{};
 

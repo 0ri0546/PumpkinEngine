@@ -1,3 +1,6 @@
+/// @file RasterizerDetail.cppm
+/// @brief Module Pumpkin.Renderer.RasterizerDetail: AVX2 and scalar helpers used by Rasterizer (internal).
+
 module;
 
 #include <immintrin.h>
@@ -11,18 +14,24 @@ import Pumpkin.Utils.SIMDTraits;
 import std;
 
 export namespace Pumpkin::Detail {
+    /// @brief 256-bit float SIMD traits (8 lanes) used throughout the rasterizer.
     using V = simd_traits<float, 256>;
+    /// @brief Number of pixels processed per SIMD step (8).
     inline constexpr int kLanes = static_cast<int>(V::width);
 
+    /// @brief Lane offsets {0..7}: `base + step * kRamp` gives the per-pixel start values of a SIMD step.
     alignas(32) inline constexpr float kRamp[kLanes] = { 0, 1, 2, 3, 4, 5, 6, 7 };
 
     // ---- 8 pixels at a time ----
 
+    /// @brief Clamps every lane to [0, 1].
     [[nodiscard]] inline V::type Clamp01(V::type x) {
         return V::min(V::max(x, V::set1(0.0f)), V::set1(1.0f));
     }
 
-    // 8 floats in [0, 255] per channel -> 8 BGRA8 pixels (truncates, like ToByte).
+    /// @brief Packs 8 pixels from float channels in [0, 255] into `0xAARRGGBB` integers (truncating).
+    /// @param r Red lanes. @param g Green lanes. @param b Blue lanes. @param a Alpha lanes.
+    /// @return 8 packed frame-buffer pixels.
     [[nodiscard]] inline __m256i PackBGRA(V::type r, V::type g, V::type b, V::type a) {
         const __m256i ri = _mm256_cvttps_epi32(r);
         const __m256i gi = _mm256_cvttps_epi32(g);
@@ -33,20 +42,29 @@ export namespace Pumpkin::Detail {
             _mm256_or_si256(_mm256_slli_epi32(gi, 8), bi));
     }
 
-    // One channel of 8 packed pixels as floats [0, 255].
+    /// @brief Extracts one byte channel of 8 packed pixels as floats in [0, 255].
+    /// @tparam Shift Bit position of the channel (24 = A, 16 = R, 8 = G, 0 = B for frame-buffer pixels).
+    /// @param pixels 8 packed pixels.
     template <int Shift>
     [[nodiscard]] inline V::type Channel(__m256i pixels) {
         const __m256i c = _mm256_and_si256(_mm256_srli_epi32(pixels, Shift), _mm256_set1_epi32(255));
         return _mm256_cvtepi32_ps(c);
     }
 
-    // Writes `value` only in the lanes where `mask` is set.
+    /// @brief Writes @p value to @p dst only in the lanes whose mask is set.
+    /// @param dst   Destination of 8 consecutive pixels (unaligned).
+    /// @param value New pixel values.
+    /// @param mask  Lane mask (all bits set = write).
     inline void StoreMasked(std::uint32_t* dst, __m256i value, V::type mask) {
         const __m256i old = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(dst));
         const __m256i mixed = _mm256_blendv_epi8(old, value, _mm256_castps_si256(mask));
         _mm256_storeu_si256(reinterpret_cast<__m256i*>(dst), mixed);
     }
 
+    /// @brief Lane mask of the fragments passing the depth test.
+    /// @param mode Depth comparison (`Equal` / `NotEqual` use a 1e-6 tolerance).
+    /// @param z    Fragment depths.
+    /// @param d    Stored depths.
     [[nodiscard]] inline V::type DepthMask(DepthTestMode mode, V::type z, V::type d) {
         const V::type diff = V::sub(z, d);
         const V::type absDiff = V::max(diff, V::neg(diff));
@@ -66,8 +84,10 @@ export namespace Pumpkin::Detail {
 
     // ---- one pixel at a time ----
 
-    // Keeps only the x values where `base + dx * x >= 0`.
-    // `lo` and `hi` are the current span. Returns false if it becomes empty.
+    /// @brief Restricts the span `[lo, hi)` to the x values where `base + dx * x >= 0`.
+    /// @param base Value at x = 0. @param dx Change per pixel.
+    /// @param lo   In/out first x (inclusive). @param hi In/out end x (exclusive).
+    /// @return false if the span becomes empty.
     [[nodiscard]] inline bool ClipSpan(float base, float dx, float& lo, float& hi) {
         if (dx > 0.0f)       lo = std::max(lo, std::ceil(-base / dx));
         else if (dx < 0.0f)  hi = std::min(hi, std::floor(-base / dx) + 1.0f);
@@ -75,16 +95,18 @@ export namespace Pumpkin::Detail {
         return lo < hi;
     }
 
-    // float -> byte (truncates). Goes through int32 because it is faster.
+    /// @brief Float to byte by truncation (via int32, which is faster); the value must already be in [0, 255].
     [[nodiscard]] inline std::uint32_t ToByte(float value) {
         return static_cast<std::uint32_t>(static_cast<std::int32_t>(value));
     }
 
+    /// @brief Packs channels (0..255) into a `0xAARRGGBB` frame-buffer pixel.
     [[nodiscard]] inline std::uint32_t PackColor(std::uint32_t r, std::uint32_t g, std::uint32_t b,
         std::uint32_t a = 255u) {
         return (a << 24) | (r << 16) | (g << 8) | b;
     }
 
+    /// @brief Scalar depth test (same semantics as DepthMask). @param mode Comparison. @param z Fragment depth. @param d Stored depth. @return true if the fragment passes.
     [[nodiscard]] inline bool DepthPass(DepthTestMode mode, float z, float d) {
         const auto aboutEqual = [](float a, float b) { return std::abs(a - b) < 1e-6f; };
         switch (mode) {
@@ -99,7 +121,8 @@ export namespace Pumpkin::Detail {
         return false;
     }
 
-    // 8 pixels: blends one colour channel (all values in [0, 255]); a is alpha in [0, 1].
+    /// @brief Blends one colour channel for 8 pixels (see BlendMode for the formulas).
+    /// @param mode Blend mode. @param d Destination channel (0..255). @param s Source channel (0..255). @param a Source alpha in [0, 1].
     [[nodiscard]] inline V::type Blend(BlendMode mode, V::type d, V::type s, V::type a) {
         switch (mode) {
         case BlendMode::Alpha:    return V::add(d, V::mul(V::sub(s, d), a));
@@ -113,7 +136,7 @@ export namespace Pumpkin::Detail {
         return s;
     }
 
-    // One pixel, same formulas.
+    /// @brief Scalar version of Blend() with the same formulas.
     [[nodiscard]] inline float Blend(BlendMode mode, float d, float s, float a) {
         switch (mode) {
         case BlendMode::Alpha:    return d + (s - d) * a;
@@ -124,15 +147,17 @@ export namespace Pumpkin::Detail {
         return s;
     }
 
-    // Reused every frame so we don't allocate again (shared by all shader types).
+    /// @brief Shared tile-bin storage reused every frame (all shader types) to avoid reallocation. @return Reference to a function-local static.
     inline BinData& FrameBins() {
         static BinData bins;
         return bins;
     }
 
+    /// @brief 8 packed 32-bit texels.
     using TexelSIMD = __m256i;
 
-    // 8 texels at once: wrap, UV -> pixel, clamp, gather. Returns 8 packed pixels in the texture's layout.
+    /// @brief Nearest sampling of 8 texels (repeat wrap, v flipped, clamped, gathered).
+    /// @return 8 packed texels in the texture's layout (`0xRRGGBBAA`).
     [[nodiscard]] inline TexelSIMD SampleTexture8(const std::uint32_t* texels, int width, int height,
         V::type u, V::type v) {
         u = V::sub(u, _mm256_floor_ps(u));
@@ -149,14 +174,16 @@ export namespace Pumpkin::Detail {
         return _mm256_i32gather_epi32(reinterpret_cast<const int*>(texels), index, 4);
     }
 
-    // Four filtered channels (0..255 floats) for 8 pixels.
+    /// @brief Four filtered channels (floats in 0..255) for 8 pixels.
     struct Texel8 { V::type r, g, b, a; };
 
-    // The four neighbouring texels of 8 pixels, plus the fractional position between them.
+    /// @brief The four neighbouring texels of 8 pixels plus the fractional position (`tx`, `ty`) between them.
     struct BilinearTaps { TexelSIMD t00, t10, t01, t11; V::type tx, ty; };
 
+    /// @brief Texel indices of the four bilinear neighbours of 8 pixels plus the fractions; shareable between same-sized textures.
     struct BilinearCoords { TexelSIMD i00, i10, i01, i11; V::type tx, ty; };
 
+    /// @brief Computes bilinear neighbour indices (texel centres at 0.5, wrapped at the edges) for 8 UV pairs.
     [[nodiscard]] inline BilinearCoords MakeBilinearCoords(int width, int height, V::type u, V::type v) {
         u = V::sub(u, _mm256_floor_ps(u));
         v = V::sub(v, _mm256_floor_ps(v));
@@ -199,7 +226,7 @@ export namespace Pumpkin::Detail {
         };
     }
 
-    // Only the four gathers. Several textures with the same size can share one BilinearCoords.
+    /// @brief Performs only the four gathers for precomputed coordinates.
     [[nodiscard]] inline BilinearTaps GatherTaps(const std::uint32_t* texels, const BilinearCoords& c) {
         const int* base = reinterpret_cast<const int*>(texels);
         return {
@@ -211,15 +238,16 @@ export namespace Pumpkin::Detail {
         };
     }
 
+    /// @brief MakeBilinearCoords + GatherTaps in one call.
     [[nodiscard]] inline BilinearTaps GatherBilinear8(const std::uint32_t* texels, int width, int height,
         V::type u, V::type v) {
         return GatherTaps(texels, MakeBilinearCoords(width, height, u, v));
     }
 
-    // Fixed-point bilinear on the packed bytes.
-    // Two channels share one 32-bit lane (16 bits each), weights are 0..256 and sum to exactly 256,
-    // so a byte times a weight never overflows 16 bits. Result: 0..255 floats like the float path,
-    // but fractions are quantised to 1/256 and the output is truncated to an integer.
+    /// @brief Fixed-point bilinear filter of all four channels at once.
+    ///
+    /// Two channels share one 32-bit lane (16 bits each) and the weights (0..256, summing to exactly 256) cannot overflow it.
+    /// The result matches the float path except that fractions are quantised to 1/256 and the output is truncated.
     [[nodiscard]] inline Texel8 BilerpAllChannelsFixed(const BilinearTaps& k) {
         const __m256i mask = _mm256_set1_epi32(0x00FF00FF);
         const __m256i c256 = _mm256_set1_epi32(256);
@@ -265,10 +293,12 @@ export namespace Pumpkin::Detail {
         };
     }
 
-    // Scalar versions, same maths, for the 0..7 pixel tail.
+    /// @brief Scalar filtered texel (floats 0..255); scalar versions below serve the 0..7 pixel tail.
     struct TexelF { float r, g, b, a; };
+    /// @brief Scalar equivalent of BilinearTaps.
     struct BilinearTapsF { std::uint32_t t00, t10, t01, t11; float tx, ty; };
 
+    /// @brief Scalar neighbour fetch for one UV (same wrapping and half-texel shift as the SIMD path).
     [[nodiscard]] inline BilinearTapsF GatherBilinear(const Texture& tex, float u, float v) {
         const int w = tex.width;
         const int h = tex.height;
@@ -291,6 +321,7 @@ export namespace Pumpkin::Detail {
         return { p[y0 * w + x0], p[y0 * w + x1], p[y1 * w + x0], p[y1 * w + x1], fx - flx, fy - fly };
     }
 
+    /// @brief Bilinearly interpolates one byte channel of four texels. @tparam Shift Channel bit position.
     template <int Shift>
     [[nodiscard]] inline float BilerpChannelF(const BilinearTapsF& k) {
         const auto f = [](const std::uint32_t t) { return static_cast<float>((t >> Shift) & 0xFF); };
@@ -299,21 +330,24 @@ export namespace Pumpkin::Detail {
         return top + (bottom - top) * k.ty;
     }
 
+    /// @brief Bilinear sample of all four channels (scalar). @return Channels in 0..255 order R, G, B, A of the texture.
     [[nodiscard]] inline TexelF SampleTextureBilinear(const Texture& tex, float u, float v) {
         const BilinearTapsF k = GatherBilinear(tex, u, v);
         return { BilerpChannelF<24>(k), BilerpChannelF<16>(k), BilerpChannelF<8>(k), BilerpChannelF<0>(k) };
     }
 
+    /// @brief Bilinear sample of a single channel (scalar). @tparam Shift Channel bit position.
     template <int Shift>
     [[nodiscard]] inline float SampleTextureBilinearChannel(const Texture& tex, float u, float v) {
         return BilerpChannelF<Shift>(GatherBilinear(tex, u, v));
     }
 
+    /// @brief `sqrt(max(len2, 1e-8))` per lane: a safe length from a squared length.
     [[nodiscard]] inline V::type SqrtMaxEps(V::type len2) {
         return _mm256_sqrt_ps(_mm256_max_ps(len2, V::set1(1e-8f)));
     }
 
-    // Loads 8 packed BGRA pixels (unaligned).
+    /// @brief Loads 8 consecutive packed pixels (unaligned).
     [[nodiscard]] inline TexelSIMD LoadPixels(const std::uint32_t* src) {
         return _mm256_loadu_si256(reinterpret_cast<const __m256i*>(src));
     }

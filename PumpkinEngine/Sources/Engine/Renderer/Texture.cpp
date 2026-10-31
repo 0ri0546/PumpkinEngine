@@ -1,3 +1,6 @@
+/// @file Texture.cpp
+/// @brief Implementation of Pumpkin.Renderer.Texture (also instantiates stb_image).
+
 module;
 
 #define STB_IMAGE_IMPLEMENTATION
@@ -63,7 +66,7 @@ namespace Pumpkin {
         return true;
     }
 
-    // Nearest, raw packed pixel
+    /// @brief Nearest lookup returning the raw packed `0xRRGGBBAA` texel (repeat wrap, v flipped).
     static std::uint32_t SampleTexturePacked(const Texture& t, float u, float v) {
         u -= std::floor(u);
         v -= std::floor(v);
@@ -72,6 +75,7 @@ namespace Pumpkin {
         return t.pixels[static_cast<std::size_t>(y) * t.width + x];
     }
 
+    /// @brief Splits a packed `0xRRGGBBAA` texel into a Color.
     static Color UnpackColor(std::uint32_t p) {
         return Color{ .r = static_cast<std::uint8_t>(p >> 24),
                       .g = static_cast<std::uint8_t>(p >> 16),

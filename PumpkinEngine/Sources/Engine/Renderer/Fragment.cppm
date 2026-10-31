@@ -1,3 +1,6 @@
+/// @file Fragment.cppm
+/// @brief Module Pumpkin.Renderer.Fragment: fragment shader interface and the built-in shaders (vertex colour, Lambert, Blinn-Phong, Toon, PBR).
+
 export module Pumpkin.Renderer.Fragment;
 
 import Pumpkin.Renderer.Types;
@@ -9,17 +12,27 @@ import std;
 export namespace Pumpkin {
     /// @brief What the rasterizer knows about one covered pixel. This is the shader's input.
     struct FragmentInput {
+        /// @brief Pixel coordinates in the frame buffer.
         int x = 0, y = 0;
-        float u = 0.0f;
-        float v = 0.0f;
+        /// @brief Pixel UVs.
+        float u = 0.0f, v = 0.0f;
+        /// @brief Interpolated depth in [0, 1] (smaller is closer).
         float depth = 0.0f;
+        /// @brief Perspective-correct barycentric weights of vertices i0, i1, i2 (they sum to 1).
         float b0 = 0.0f, b1 = 0.0f, b2 = 0.0f;       // perspective-correct barycentric weights (sum = 1)
+        /// @brief Indices of the triangle's three vertices in the mesh the shader was configured with.
         std::uint32_t i0 = 0, i1 = 0, i2 = 0;        // vertex indices of the triangle
+        /// @brief Id of the primitive inside its PrimitiveBatch.
         std::uint32_t primitiveId = 0;
+        /// @brief Albedo map sample, channels in [0, 1] (RGB held in linear space); all 1 when the material has no albedo map.
         float albedo[4] = { 1,1,1,1 };
+        /// @brief Tangent-space normal from the normal map; (0, 0, 1) means "no perturbation".
         float nx = 0, ny = 0, nz = 1;
+        /// @brief ORM map sample (metallic, roughness, ambient occlusion) in [0, 1]; the rasterizer supplies neutral values when the map is missing.
         float metallic = 0, roughness = 1, ao = 1;
+        /// @brief Tangent vector used to build the tangent frame in ApplyNormalMap().
         Vec3f tangent{ 1, 0, 0 };
+        /// @brief Handedness (+1 / -1) of the bitangent in ApplyNormalMap().
         float tangentSign = 1.0f;
 
         /// a0 * b0 + a1 * b1 + a2 * b2, for any T that supports T * float and T + T.
@@ -77,7 +90,7 @@ export namespace Pumpkin {
         }
     };
 
-    /// @brief Default shader: the interpolated vertex colors.
+    /// @brief Default shader: the albedo colors.
     struct AlbedoColorShader {
         [[nodiscard]] PixelOutput operator()(const FragmentInput& f) const {
             return {
@@ -122,6 +135,12 @@ export namespace Pumpkin {
         };
     }
 
+    /// @brief Diffuse-only shading with one directional light.
+    ///
+    /// `color = baseColor * lightCol * (ambient * ao + max(0, N.L))`, clamped to [0, 255].
+    /// Members: `normals` (per-vertex, view space, indexed by FragmentInput::i0..i2), `colors` (per-vertex),
+    /// `lightDir` (toward the light, normalised internally), `lightCol`, `ambient`.
+    /// @note `viewDir`, `specularStrength` and `shininess` are declared but not used by this shader.
     struct LambertShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
@@ -152,6 +171,12 @@ export namespace Pumpkin {
         }
     };
 
+    /// @brief Cel shading: the diffuse term is quantised into bands, plus a hard specular highlight.
+    ///
+    /// Bands for N.L: > 0.75 -> 1.0, > 0.4 -> 0.7, > 0.15 -> 0.45, otherwise `ambient * ao`. A fixed specular
+    /// spot (strength `specularStrength`) appears where N.H > 0.9, using a hard-coded view vector (0, 0, 1).
+    /// Members: `normals`, `colors`, `lightDir`, `lightCol`, `ambient`, `specularStrength`.
+    /// @note `shininess` is declared but unused. Works with OutlinePass through ShaderId::Toon.
     struct ToonShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
@@ -200,6 +225,12 @@ export namespace Pumpkin {
         }
     };
 
+    /// @brief Blinn-Phong shading with one directional light.
+    ///
+    /// `color = lightCol * (baseColor * (ambient * ao + max(0, N.L)) + 255 * specularStrength * (N.H)^shininess)`,
+    /// the specular term only where N.L > 0; clamped to [0, 255].
+    /// Members: `normals`, `colors`, `lightDir`, `lightCol`, `viewDir` (toward the camera), `ambient`,
+    /// `specularStrength`, `shininess`.
     struct BlinnPhongShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;
@@ -272,6 +303,11 @@ export namespace Pumpkin {
     }
 
     /// @brief Metallic / roughness PBR with one directional light (Cook-Torrance specular + Lambert diffuse).
+    ///
+    /// @warning Unlike the other shaders, `lightDir` and `viewDir` are used as given (not normalised):
+    ///          set them to unit vectors, or the lighting is scaled by their length.
+    /// Members: `normals`, `colors`, `lightDir`, `lightCol`, `viewDir`, `lightIntensity`, `ambient`, `metallic`
+    /// and `roughness` (both multiplied by the ORM map samples). Output is gamma-encoded with a square root.
     struct PBRShader {
         std::span<const Vec3f> normals;
         std::span<const Color> colors;               // base color (albedo)

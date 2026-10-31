@@ -1,3 +1,6 @@
+/// @file TerrainGenerator.cpp
+/// @brief Implementation of Pumpkin.Renderer.TerrainGenerator: value-noise height field, biome colouring and meshing.
+
 module Pumpkin.Renderer.TerrainGenerator;
 
 import Pumpkin.Renderer.Types;
@@ -8,19 +11,20 @@ import std;
 
 namespace Pumpkin {
     namespace {
-        // Biome colors
+        /// @brief Water colour
         constexpr Color Water{ 35, 145, 220, 127 };
+        /// @brief Biome colour palette (opaque).
         constexpr Color Sand{ 230, 210, 145, 255 };
         constexpr Color Grass{ 100, 190, 75, 255 };
         constexpr Color Rock{ 125, 115, 105, 255 };
         constexpr Color Snow{ 245, 245, 240, 255 };
 
-        // Noise
-
+        /// @brief Quintic smoothstep `6t^5 - 15t^4 + 10t^3` used to interpolate lattice values.
         float Fade(float t) {
             return t * t * t * (t * (t * 6.0f - 15.0f) + 10.0f);
         }
 
+        /// @brief Integer hash of a lattice point and a seed.
         std::uint32_t Hash(int x, int z, std::uint32_t seed) {
             std::uint32_t h =
                 static_cast<std::uint32_t>(x) * 374761393u +
@@ -31,11 +35,13 @@ namespace Pumpkin {
             return h ^ (h >> 16);
         }
 
+        /// @brief Deterministic pseudo-random value in [-1, 1] for a lattice point.
         float RandomValue(int x, int z, std::uint32_t seed) {
             return static_cast<float>(Hash(x, z, seed) & 0x00FFFFFFu)
                 * (1.0f / 8388607.5f) - 1.0f;
         }
 
+        /// @brief 2D value noise: smooth bilinear interpolation of the four surrounding lattice values (range about [-1, 1]).
         float Noise(float x, float z, std::uint32_t seed) {
             const float fx = std::floor(x);
             const float fz = std::floor(z);
@@ -56,6 +62,8 @@ namespace Pumpkin {
             return ab + (cd - ab) * tz;
         }
 
+        /// @brief Sum of `noiseOctaves` noise layers (frequency x lacunarity, amplitude x persistence) normalised by the total amplitude.
+        /// @param scaleMultiplier Multiplies `noiseScale` for this call.
         float FractalNoise(float x, float z, const TerrainConfig& config,
                            float scaleMultiplier) {
             float frequency = config.noiseScale * scaleMultiplier;
@@ -74,8 +82,7 @@ namespace Pumpkin {
             return value / totalAmplitude; // octaves >= 1 and amplitude > 0
         }
 
-        // Config helpers
-
+        /// @brief Throws std::invalid_argument if the configuration is unusable.
         void Validate(const TerrainConfig& c) {
             if (c.cellsX <= 0 || c.cellsZ <= 0 ||
                 c.sizeX <= 0.0f || c.sizeZ <= 0.0f ||
@@ -85,8 +92,10 @@ namespace Pumpkin {
             }
         }
 
+        /// @brief Absolute heights of the biome thresholds.
         struct Levels { float sand, grass, rock, snow; };
 
+        /// @brief Converts the relative biome levels of a config to absolute heights with GetTerrainLevel().
         Levels ComputeLevels(const TerrainConfig& c) {
             const auto Level = [&](float relative) {
                 return GetTerrainLevel(c.baseHeight, c.minHeight, c.maxHeight, relative);
@@ -95,6 +104,10 @@ namespace Pumpkin {
                      Level(c.rockLevel), Level(c.snowLevel) };
         }
 
+        /// @brief Picks the biome colour of a triangle.
+        /// @param height Average height of the triangle.
+        /// @param slope  Y component of the face normal (1 = flat, small = steep).
+        /// Snow above the snow level, rock above the rock level, rock on steep slopes (< 0.75) above the grass level, sand below the sand level, grass otherwise.
         Color GetColor(float height, float slope, const Levels& l) {
             if (height >= l.snow) return Snow;
             if (height >= l.rock) return Rock;
@@ -103,9 +116,7 @@ namespace Pumpkin {
             return Grass;
         }
 
-        // Height grid
-
-        // Cell size and world-space origin of the grid, shared by terrain and water.
+        /// @brief Cell size and origin of the terrain grid (centred on the origin in X/Z), shared by terrain and water.
         struct Grid {
             int vx;        // vertices per row (cellsX + 1)
             float stepX;
@@ -121,7 +132,10 @@ namespace Pumpkin {
                 , startZ(-c.sizeZ * 0.5f) {}
         };
 
-        // Row-major (cellsZ+1) x (cellsX+1) height field, shared by terrain and water.
+        /// @brief Computes the (cellsZ + 1) x (cellsX + 1) row-major height field.
+        ///
+        /// Blends a low-frequency (x0.35) and a normal-frequency fractal noise (85% / 15%), reshapes it with an exponent of 0.7,
+        /// scales it by half the height range around `baseHeight` and clamps to [minHeight, maxHeight].
         std::vector<float> BuildHeights(const TerrainConfig& c, const Grid& g) {
             const int vz = c.cellsZ + 1;
             const float halfRange = (c.maxHeight - c.minHeight) * 0.5f;
@@ -144,12 +158,12 @@ namespace Pumpkin {
             return heights;
         }
 
-        // Terrain meshing
-
-        // Cell range [x0, x1) x [z0, z1).
+        /// @brief Cell range `[x0, x1) x [z0, z1)`.
         struct CellRange { int x0, x1, z0, z1; };
 
-        // Builds flat-shaded triangles for a range of cells.
+        /// @brief Builds flat-shaded triangles (two per cell, unique vertices each) for a range of cells.
+        /// @param g      Grid. @param h Height field. @param levels Biome heights. @param r Cell range.
+        /// @param bounds Optional output: local-space bounding box of the range (may be null).
         Mesh BuildTerrainRange(const Grid& g, const std::vector<float>& h,
                                const Levels& levels, const CellRange& r, AABB* bounds)
         {
@@ -216,8 +230,6 @@ namespace Pumpkin {
         }
     }
 
-    // Public API
-
     Mesh GenerateTerrain(const TerrainConfig& config) {
         Validate(config);
         const Grid grid(config);
@@ -267,6 +279,8 @@ namespace Pumpkin {
 
         std::mt19937 rng(config.seed + 12345u);
 
+        // Appends one flat-shaded triangle (own 3 vertices, face normal). Degenerate triangles are skipped.
+        // Vertices are emitted in the order c, b, a. The normal is computed once from (a, b, c).
         auto emitTriangle = [&](Vec3f a, Vec3f b, Vec3f c, Color color)
         {
             const Vec3f ab = b - a;
@@ -277,22 +291,6 @@ namespace Pumpkin {
                 ab[2] * ac[0] - ab[0] * ac[2],
                 ab[0] * ac[1] - ab[1] * ac[0]
             };
-
-            const float dot =
-                normal[0] * normal[0] +
-                normal[1] * normal[1] +
-                normal[2] * normal[2];
-
-            if (dot < 0.0f)
-            {
-                std::swap(b, c);
-
-                normal = {
-                    -normal[0],
-                    -normal[1],
-                    -normal[2]
-                };
-            }
 
             const float length = std::sqrt(
                 normal[0] * normal[0] +
@@ -325,7 +323,7 @@ namespace Pumpkin {
                 { base, base + 1, base + 2 });
         };
 
-        // Sample the same height field used to generate the terrain.
+        // Ground height at (x, z): bilinear interpolation of the height field used by the terrain.
         auto getHeight = [&](float x, float z)
         {
             const float gx = std::clamp(
@@ -381,10 +379,6 @@ namespace Pumpkin {
 
             const bool isSnow = normalizedHeight >= config.snowLevel;
 
-            const Color foliageColor = isSnow
-                ? Color{ 255, 255, 255, 255 }
-            : Color{ 135, 220, 100, 255 };
-
             // Low-frequency noise defines broad forest regions.
             constexpr float forestNoiseScale = 0.5f;
             constexpr float forestThreshold = 0.01f;
@@ -399,14 +393,15 @@ namespace Pumpkin {
             if (ground <= config.waterLevel + 0.15f)
                 continue;
 
+            const Color foliageColor = isSnow
+                ? Color{ 255, 255, 255, 255 }
+                : Color{ 135, 220, 100, 255 };
+
             const float scaleH = heightScale(rng);
             const float scaleW = widthScale(rng);
 
             const float trunkHeight = 0.7f * scaleH;
             const float trunkRadius = 0.12f * scaleW;
-
-            const Vec3f base{x, ground, z};
-            const Vec3f top{x, ground + trunkHeight, z};
 
             // Trunk: low-poly cylinder.
             for (int s = 0; s < sides; ++s)

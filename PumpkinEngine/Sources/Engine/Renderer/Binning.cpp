@@ -1,3 +1,6 @@
+/// @file Binning.cpp
+/// @brief Implementation of Pumpkin.Renderer.Passes.Binning: two-pass parallel tile binning and radix sort.
+
 module Pumpkin.Renderer.Passes.Binning;
 
 import Pumpkin.Utils.ThreadPool;
@@ -5,15 +8,18 @@ import Pumpkin.Utils.ThreadPool;
 import std;
 
 namespace Pumpkin {
+    /// @brief Number of primitive chunks handled by one binning job.
     static constexpr std::size_t kChunksPerJob = 32; // binning work unit
+    /// @brief Below this many items SortItems uses a comparison sort instead of the radix sort.
     static constexpr std::size_t kSmallSort = 256;
 
+    /// @brief Maps a float to an unsigned integer with the same ordering (flip all bits if negative, else the sign bit).
     [[nodiscard]] static std::uint32_t SortableKey(float f) {
         const auto u = std::bit_cast<std::uint32_t>(f);
         return u ^ (u >> 31 ? 0xFFFFFFFFu : 0x80000000u);
     }
 
-    // LSD radix sort on a span, ascending, 3 passes of 11 bits. Stable.
+    /// @brief Stable LSD radix sort, 3 passes of 11 bits (covers 32-bit keys), ascending.
     static void RadixSort(std::span<SortItem> items, std::vector<SortItem>& scratch) {
         if (scratch.size() < items.size()) scratch.resize(items.size());
 
@@ -47,7 +53,10 @@ namespace Pumpkin {
         RadixSort(items, scratch);
     }
 
-    // Calls fn(tileIndex) for every tile touched by the triangle's bounding box.
+    /// @brief Calls @p fn(tileIndex) for every tile touched by the primitive's bounding box.
+    /// @param t      Primitive.
+    /// @param tilesX Tile columns (to compute the linear tile index).
+    /// @param fn     Callback taking `std::size_t tileIndex`.
     template <class Fn>
     static void ForEachTile(const Primitive& t, int tilesX, Fn&& fn) {
         const int tx0 = t.x0 / kTileSize, tx1 = (t.x1 - 1) / kTileSize;

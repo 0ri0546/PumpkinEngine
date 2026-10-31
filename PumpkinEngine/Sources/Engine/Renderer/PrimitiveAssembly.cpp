@@ -1,3 +1,6 @@
+/// @file PrimitiveAssembly.cpp
+/// @brief Implementation of Pumpkin.Renderer.PrimitiveAssembly: culling and edge/attribute plane setup.
+
 module Pumpkin.Renderer.PrimitiveAssembly;
 
 import Pumpkin.Renderer.Types;
@@ -6,9 +9,10 @@ import Pumpkin.Utils.ThreadPool;
 import std;
 
 namespace Pumpkin {
+    /// @brief Sign of the screen-space area for front faces; flip to change the winding convention.
     static constexpr float kFrontFaceSign = 1.0f;
 
-    // Returns w0 * a + w1 * b + w2 * c for start, dx and dy.
+    /// @brief Combines three weight planes: `w0 * a + w1 * b + w2 * c` for start, dx and dy (turns per-vertex values into one Plane).
     static Plane Mix(const Plane& w0, const Plane& w1, const Plane& w2,
         float a, float b, float c) {
         return {
@@ -18,7 +22,10 @@ namespace Pumpkin {
         };
     }
 
-    // Culls one triangle. If it stays, appends its primitive to dst.
+    /// @brief Culls one triangle and, if it survives, appends its Primitive to @p dst.
+    ///
+    /// Discards flat triangles, culled faces and fully off-screen boxes; otherwise sets up the bounding box, the three barycentric
+    /// planes (evaluated at pixel centres), and the depth, 1/w and UV planes.
     static void AssembleTriangle(std::span<const Vertex> v, std::span<const std::uint32_t> indices,
         std::span<const Color> colors, std::size_t tri, const AssemblyDesc& desc,
         std::vector<Primitive>& dst) {
