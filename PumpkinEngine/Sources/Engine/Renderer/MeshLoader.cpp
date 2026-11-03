@@ -4,8 +4,7 @@
 module Pumpkin.Renderer.MeshLoader;
 
 import Pumpkin.Renderer.Types;
-import Pumpkin.Utils.ObjLoader;
-import Pumpkin.Utils.Utils;
+import Pumpkin.Utils;
 
 import Pumpkin.Math.Vec;
 

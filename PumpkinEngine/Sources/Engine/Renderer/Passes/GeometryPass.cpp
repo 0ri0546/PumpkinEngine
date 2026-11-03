@@ -7,9 +7,7 @@ import Pumpkin.Renderer.Fragment;
 import Pumpkin.Renderer.Shaders;
 import Pumpkin.Renderer.Texture;
 import Pumpkin.Renderer.Transform;
-import Pumpkin.Utils.ThreadPool;
-import Pumpkin.Utils.Utils;
-import Pumpkin.Utils.RenderProfiler;
+import Pumpkin.Utils;
 
 import std;
 

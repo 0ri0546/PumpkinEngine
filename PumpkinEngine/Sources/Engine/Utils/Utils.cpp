@@ -1,4 +1,4 @@
-module Pumpkin.Utils.Utils;
+module Pumpkin.Utils;
 
 import std;
 
