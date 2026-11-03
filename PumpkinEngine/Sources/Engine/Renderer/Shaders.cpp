@@ -43,7 +43,7 @@ namespace Pumpkin {
         };
 
         constexpr Wave waves[] = {
-            {  -1.0f,  -0.7f, 0.08f, 3.5f, 0.7f, 0.45f }
+            {  -1.0f,  -0.7f, 0.08f, 3.5f, 0.5f, 0.45f }
         };
 
         float dx = 0.0f;

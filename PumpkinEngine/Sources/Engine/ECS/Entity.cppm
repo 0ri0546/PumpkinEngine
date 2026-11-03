@@ -29,9 +29,13 @@ export namespace Pumpkin::ECS {
         /// @param b Handle to compare with.
         /// @return true if @p b designates the same slot at the same generation.
         /// @note operator!= is synthesised by the compiler (C++20 rewritten candidates).
-        bool operator==(const Entity& b) const {
-            return index == b.index && generation == b.generation;
-        }
+        auto operator<=>(const Entity& b) const = default;
+        bool operator==(const Entity& b) const = default;
+        bool operator!=(const Entity& b) const = default;
+        bool operator<(const Entity& b) const = default;
+        bool operator>(const Entity& b) const = default;
+        bool operator<=(const Entity& b) const = default;
+        bool operator>=(const Entity& b) const = default;
     };
 
     /// @brief The "no entity" handle ({0, 0}).

@@ -205,6 +205,16 @@ export namespace Pumpkin::ECS {
             struct Iterator {
                 using value_type = std::tuple<Entity, Components&...>;
 
+                /// ECS::World world;
+                /// Entity entt = world.CreateEntity();
+                /// Entity entt2 = world.CreateEntity();
+                /// Velocity vel{};
+                /// Position pos{};
+                /// world.AddComponent<Velocity>(entt, vel);
+                /// world.AddComponent<Velocity>(entt2, vel);
+                /// world.AddComponent<Position>(entt, pos);
+                /// std::vector<Entity> res = world.Query<Velocity, Position>();
+
                 std::span<const Entity>::iterator it;
                 std::span<const Entity>::iterator end;
                 std::tuple<ComponentPool<Components>*...> pools;
@@ -268,7 +278,7 @@ export namespace Pumpkin::ECS {
 
             /// @brief Size of the driver range.
             /// @return Number of entities in the driver pool: an *upper bound* on the number of matches, not the exact count.
-            std::size_t Size() const { return m_driver.size(); }
+            [[nodiscard]] std::size_t Size() const { return m_driver.size(); }
 
             /// @brief Sub-view over a contiguous part of the driver range.
             /// @param first Offset in the driver range.

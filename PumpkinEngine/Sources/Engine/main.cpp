@@ -47,10 +47,10 @@ namespace {
 
     TerrainConfig MakeTerrainConfig() {
         return TerrainConfig{
-            .cellsX = 256,
-            .cellsZ = 256,
-            .sizeX = 50.0f,
-            .sizeZ = 50.0f,
+            .cellsX = 64,
+            .cellsZ = 64,
+            .sizeX = 30.0f,
+            .sizeZ = 30.0f,
             .minHeight = -2.0f,
             .maxHeight = 5.0f,
             .baseHeight = 1.5f,
@@ -193,7 +193,9 @@ int main() {
                 .roughness = 0.3f,
                 .ao = 0.5f,
                 .albedo = &cowAlbedo,
-                .shader = ShaderId::Lambert
+                .shader = ShaderId::Lambert,
+                .animatedWaterOndulation = true,
+                .animatedWaterWave = true
             };
 
             Material vkRoomMaterial{
