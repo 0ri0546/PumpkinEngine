@@ -94,7 +94,7 @@ namespace Pumpkin {
         {
             Prof::Scope scope(Prof::Stage::Assemble);
             const AssemblyDesc desc{
-                .culling = CullMode::None,
+                .culling = CullMode::Back,
                 .width   = ctx.fb.width,
                 .height  = ctx.fb.height
             };

@@ -26,5 +26,5 @@ export namespace Pumpkin::UI
 
     [[nodiscard]]
     PUMPKIN_API LoadedUI LoadUI(const YAML::Node& root);
-    PUMPKIN_API void TestUILoader();
+    PUMPKIN_API void LoadUIFile(const char* yamlFilepath);
 }
