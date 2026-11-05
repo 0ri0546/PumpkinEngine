@@ -41,3 +41,52 @@ elements:
     hoveredColor: [75, 75, 75, 245]
     pressedColor: [20, 20, 20, 255]
     disabledColor: [35, 35, 35, 180]
+
+  - type: Button
+    id: ecs_pause_button
+    anchor: top-left
+    position: { x: 3, y: 13 }
+    size: { width: 260, height: 65 }
+    text: "PAUSE (ECS)"
+
+  - type: Button
+    id: skybox_button
+    anchor: top-left
+    position: { x: 3, y: 23 }
+    size: { width: 260, height: 65 }
+    text: "SKYBOX"
+
+  - type: Button
+    id: particle_button
+    anchor: top-left
+    position: { x: 3, y: 33 }
+    size: { width: 260, height: 65 }
+    text: "PARTICLES"
+
+  - type: Button
+    id: geometry_button
+    anchor: top-left
+    position: { x: 3, y: 43 }
+    size: { width: 260, height: 65 }
+    text: "GEOMETRY"
+
+  - type: Button
+    id: outline_button
+    anchor: top-left
+    position: { x: 3, y: 53 }
+    size: { width: 260, height: 65 }
+    text: "OUTLINE"
+
+  - type: Button
+    id: image_button
+    anchor: top-left
+    position: { x: 3, y: 63 }
+    size: { width: 260, height: 65 }
+    text: "IMAGE"
+
+  - type: Button
+    id: bilinear_button
+    anchor: top-left
+    position: { x: 3, y: 73 }
+    size: { width: 260, height: 65 }
+    text: "BILINEAR"

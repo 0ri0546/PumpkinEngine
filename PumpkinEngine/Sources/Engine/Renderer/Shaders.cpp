@@ -3,8 +3,7 @@
 
 module Pumpkin.Renderer.Shaders;
 
-import Pumpkin.Utils.ThreadPool;
-import Pumpkin.Utils.Utils;
+import Pumpkin.Utils;
 
 import std;
 

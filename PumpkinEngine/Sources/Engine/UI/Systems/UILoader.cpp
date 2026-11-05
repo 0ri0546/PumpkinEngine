@@ -380,9 +380,9 @@ namespace Pumpkin::UI
         };
     }
 
-    void TestUILoader()
+    void LoadUIFile(const char* yamlFilepath)
     {
-        std::ifstream file("Assets/UI/MainMenu.yaml");
+        std::ifstream file(yamlFilepath);
 
         if (!file)
         {

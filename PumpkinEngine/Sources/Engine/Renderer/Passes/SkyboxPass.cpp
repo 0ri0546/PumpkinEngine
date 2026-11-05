@@ -5,8 +5,7 @@ module Pumpkin.Renderer.Passes.Skybox;
 
 import Pumpkin.Renderer.Texture;
 import Pumpkin.Renderer.Types;
-import Pumpkin.Utils.ThreadPool;
-import Pumpkin.Utils.Utils;
+import Pumpkin.Utils;
 
 import Pumpkin.Math.Vec;
 

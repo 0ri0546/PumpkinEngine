@@ -2,7 +2,13 @@ module;
 
 #include <DLL/Export.hpp>
 
-export module Pumpkin.Utils.Utils;
+export module Pumpkin.Utils;
+
+export import Pumpkin.Utils.Events;
+export import Pumpkin.Utils.ObjLoader;
+export import Pumpkin.Utils.RenderProfiler;
+export import Pumpkin.Utils.ThreadPool;
+export import Pumpkin.Utils.Window;
 
 import Pumpkin.Renderer.Types;
 
