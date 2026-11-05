@@ -80,6 +80,8 @@ export namespace Pumpkin::UI
 
         ButtonState state = ButtonState::Normal;
         bool enabled = true;
+
+        std::function<void()> onClick;
     };
 
     struct UIButtonDraw

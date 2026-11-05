@@ -156,6 +156,8 @@ namespace Pumpkin::Demo {
             SDL_free(ids);
         }
 
+        RenderSettings settings{};
+
         // The render context is created once: the resize handler needs it between frames.
         // Only `deltaTime` and `scene` change from one frame to the next.
         RenderContext ctx{
@@ -164,7 +166,8 @@ namespace Pumpkin::Demo {
             .camera = camera,
             .deltaTime = 0.0f,
             .scene = {},
-            .toonMask = toon
+            .toonMask = toon,
+            .settings = settings,
         };
 
         // Events. Declaration order matters (reverse destruction): the dispatcher must outlive the
@@ -189,6 +192,14 @@ namespace Pumpkin::Demo {
 
         CameraController cameraController{ camera };   // declared after the dispatcher: destroyed before it
         cameraController.Attach(dispatcher);
+
+        uiRenderer.AddCallback("PAUSE (ECS)", [&settings] { settings.paused   = !settings.paused;   });
+        uiRenderer.AddCallback("SKYBOX",      [&settings] { settings.skybox   = !settings.skybox;   });
+        uiRenderer.AddCallback("PARTICLES",   [&settings] { settings.particle = !settings.particle; });
+        uiRenderer.AddCallback("GEOMETRY",    [&settings] { settings.geometry = !settings.geometry; });
+        uiRenderer.AddCallback("OUTLINE",     [&settings] { settings.outline  = !settings.outline;  });
+        uiRenderer.AddCallback("IMAGE",       [&settings] { settings.image    = !settings.image;    });
+        uiRenderer.AddCallback("BILINEAR",    [&settings] { settings.bilinear = !settings.bilinear; });
 
         while (isRunning) {
             nextFrame += frameTime;
@@ -218,7 +229,8 @@ namespace Pumpkin::Demo {
             //    buffers (spawn / destroy / add / remove) are applied single-threaded.
             //    A throwing system is reported but must not kill the frame.
             try {
-                scheduler.Run(std::min(deltaTime, kMaxEcsStep));
+                if (!settings.paused)
+                    scheduler.Run(std::min(deltaTime, kMaxEcsStep));
             } catch (const std::exception& error) {
                 std::println(stderr, "[ECS] system failure: {}", error.what());
             }

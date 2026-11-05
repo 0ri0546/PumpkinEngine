@@ -26,6 +26,17 @@ export namespace Pumpkin {
 		const Material* material;
     };
 
+    struct PUMPKIN_API RenderSettings
+    {
+        bool       paused    = false;
+        bool       skybox    = true;
+        bool       particle  = true;
+        bool       geometry  = true;
+        bool       outline   = true;
+        bool       image     = true;
+        bool       bilinear  = true;
+    };
+
     /// @brief Everything a RenderPass needs for one frame (references only, owned by the caller).
     ///
     /// @thread_safety Passes run sequentially on the render thread; they parallelise internally through the engine thread pool.
@@ -42,6 +53,7 @@ export namespace Pumpkin {
         std::span<DrawItem> scene;
         /// @brief One byte per pixel, set by the rasterizer where a Toon-shaded fragment was written (consumed by OutlinePass). Must hold at least `width * height` entries.
         std::vector<std::uint8_t>& toonMask; // for tooning, only saves tooned materials data
+        RenderSettings& settings;
     };
 
     /// @brief Interface of one rendering stage (clear, geometry, outline, UI...).

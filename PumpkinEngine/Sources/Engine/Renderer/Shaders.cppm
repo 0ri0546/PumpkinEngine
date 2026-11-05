@@ -129,9 +129,9 @@ export namespace Pumpkin {
         Shader& shader,
         const DrawItem& item
     ) {
-        static const Rasterizer rasterizer{
+        const Rasterizer rasterizer{
             .Projection = ctx.camera.type,
-            .BilinearFiltering = true
+            .BilinearFiltering = ctx.settings.bilinear
         };
         rasterizer.Rasterize(batch, ctx, shader, item);
     }

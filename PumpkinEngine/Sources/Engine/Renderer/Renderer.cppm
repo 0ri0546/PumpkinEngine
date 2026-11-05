@@ -50,6 +50,11 @@ export namespace Pumpkin {
         /// @param ctx Frame data shared by all passes.
         void Render(RenderContext& ctx) {
             for (auto& p : m_passes) {
+                if (!ctx.settings.skybox   && p->Name() == "Skybox")    continue;
+                if (!ctx.settings.particle && p->Name() == "Particles") continue;
+                if (!ctx.settings.geometry && p->Name() == "Geometry")  continue;
+                if (!ctx.settings.outline  && p->Name() == "Outline")   continue;
+                if (!ctx.settings.image    && p->Name() == "UI Images") continue;
                 Prof::Scope scope(p->Name());
                 p->Execute(ctx);
             }

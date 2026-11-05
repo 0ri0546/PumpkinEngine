@@ -200,7 +200,33 @@ export namespace Pumpkin::UI
             if (releasedOnButton && button.enabled)
                 std::cout << "Bouton clique : " << button.text << '\n';
 
+            if (releasedOnButton && button.enabled && button.onClick)
+                button.onClick();
+
             HandleMouseMove(mouseX, mouseY);
+        }
+
+        /// @brief Attaches the callback to every button whose text matches.
+        /// Returns how many buttons matched (0 = typo in the name or the YAML).
+        template<typename Fn>
+            requires std::invocable<Fn&>
+        std::size_t AddCallback(std::string_view text, Fn&& callback)
+        {
+            // Built once, then copied into each matching button.
+            const std::function<void()> function{std::forward<Fn>(callback)};
+
+            std::size_t count = 0;
+
+            for (auto& button : m_ui.storage.buttons)
+            {
+                if (button.text != text)
+                    continue;
+
+                button.onClick = function;
+                ++count;
+            }
+
+            return count;
         }
 
     private:
