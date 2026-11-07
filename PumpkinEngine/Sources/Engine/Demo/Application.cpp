@@ -218,10 +218,12 @@ namespace Pumpkin::Demo {
 
             dispatcher.PumpEvents();
 
-            if (WindowNotFocused(window)) {
+            static bool firstFrame = true;
+            if (WindowNotFocused(window) && !firstFrame) {
                 std::this_thread::sleep_until(nextFrame);
                 continue;
             }
+            firstFrame = false;
 
             cameraController.Update(deltaTime);
 

@@ -29,6 +29,15 @@ export namespace Pumpkin::UI::YAML
         // Paires cle/valeur d'un mapping.
         std::vector<std::pair<std::string, Node>> mapping;
 
+        Node() = default;
+        ~Node() = default;
+
+        Node(Node&&) noexcept = default;
+        Node& operator=(Node&&) noexcept = default;
+
+        Node(const Node&) = default;
+        Node& operator=(const Node&) = default;
+
         [[nodiscard]] const Node* Find(const std::string& key) const;
     };
 

@@ -5,11 +5,11 @@ canvas:
 
 textures:
   - id: logo
-    path: assets/ui/logo.png
+    path: Assets/UI/logo.png
 
 fonts:
   - id: arial
-    path: assets/fonts/Arial.ttf
+    path: Assets/Fonts/Arial.ttf
     size: 16
 
 elements:
